@@ -30,6 +30,7 @@ def main() -> int:
     pokemon = data.get("pokemon", [])
     real_pokemon = [entry for entry in pokemon if not entry.get("isPlaceholder")]
     moves = data.get("moves", [])
+    abilities = data.get("abilities", [])
     locations = data.get("locations", [])
     items = data.get("items", {})
     frontier = data.get("frontier", {})
@@ -78,6 +79,9 @@ def main() -> int:
         all("levelUp" in move.get("learners", {}) and "egg" in move.get("learners", {}) for move in moves),
         "A move record is missing learner groups",
     )
+    warn(counts.get("movesWithMetadata", 0) >= 500, "Fewer than 500 moves have reference metadata")
+    warn(len(abilities) >= 200, f"Expected at least 200 ability records, found {len(abilities)}")
+    warn(counts.get("abilitiesWithMetadata", 0) >= 150, "Fewer than 150 abilities have reference descriptions")
 
     check(len(locations) >= 50, f"Expected at least 50 wild encounter locations, found {len(locations)}")
     check(all(location.get("methods") for location in locations), "A location has no encounter methods")
@@ -110,6 +114,10 @@ def main() -> int:
     warn(
         data.get("warnings", {}).get("moveMetadata") is None,
         data.get("warnings", {}).get("moveMetadata", ""),
+    )
+    warn(
+        data.get("warnings", {}).get("abilityMetadata") is None,
+        data.get("warnings", {}).get("abilityMetadata", ""),
     )
 
     summary = {

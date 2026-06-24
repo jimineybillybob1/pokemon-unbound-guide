@@ -15,6 +15,9 @@ DATA_DIR = ROOT_DIR / "data"
 ASSETS_DIR = ROOT_DIR / "assets"
 POKEMON_ASSETS_DIR = ASSETS_DIR / "pokemon"
 ITEM_ASSETS_DIR = ASSETS_DIR / "items"
+REFERENCE_DATA_DIR = ROOT_DIR.parent / "Pokemon Dreamstone Mysteries" / "data"
+DREAMSTONE_MOVES_FILE = REFERENCE_DATA_DIR / "pokerex-moves.js"
+DREAMSTONE_ABILITIES_FILE = REFERENCE_DATA_DIR / "pokerex-abilities.js"
 
 BASE_STATS_FILE = DOCS_DIR / "Base_Stats.txt"
 EVOLUTION_FILE = DOCS_DIR / "Evolution Table.txt"
@@ -154,6 +157,92 @@ def read_text(path: Path) -> str:
 
 def normalize_key(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "", clean(value).lower())
+
+
+def read_js_assignment(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    _, separator, payload = raw.partition("=")
+    if not separator:
+        return None
+    payload = payload.rstrip().removesuffix(";").strip()
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+
+
+def load_reference_metadata() -> dict:
+    metadata = {
+        "moves": {},
+        "abilities": {},
+        "sources": {},
+        "warnings": [],
+    }
+
+    move_payload = read_js_assignment(DREAMSTONE_MOVES_FILE)
+    if move_payload:
+        metadata["sources"]["moves"] = {
+            "name": "Dreamstone Pokerex move reference",
+            "source": move_payload.get("source", {}),
+            "file": DREAMSTONE_MOVES_FILE.name,
+        }
+        for move in move_payload.get("moves", []):
+            name = clean(move.get("name"))
+            if not name:
+                continue
+            metadata["moves"][normalize_key(name)] = {
+                "type": clean(move.get("type")),
+                "category": clean(move.get("category")),
+                "power": move.get("power"),
+                "accuracy": move.get("accuracy"),
+                "pp": move.get("pp"),
+                "priority": move.get("priority"),
+                "contact": bool(move.get("contact")),
+                "description": clean(move.get("description")),
+                "effect": clean(move.get("effect")),
+                "metadataSource": "Dreamstone Pokerex move reference",
+            }
+    else:
+        metadata["warnings"].append(
+            f"No reference move metadata loaded from {DREAMSTONE_MOVES_FILE}."
+        )
+
+    ability_payload = read_js_assignment(DREAMSTONE_ABILITIES_FILE)
+    if ability_payload:
+        metadata["sources"]["abilities"] = {
+            "name": "Dreamstone Pokerex ability reference",
+            "source": ability_payload.get("source", {}),
+            "file": DREAMSTONE_ABILITIES_FILE.name,
+        }
+        for ability in ability_payload.get("abilities", []):
+            name = clean(ability.get("name"))
+            description = clean(ability.get("description"))
+            if not name:
+                continue
+            record = metadata["abilities"].setdefault(
+                normalize_key(name),
+                {
+                    "name": name,
+                    "descriptions": [],
+                    "metadataSource": "Dreamstone Pokerex ability reference",
+                },
+            )
+            if description and description not in record["descriptions"]:
+                record["descriptions"].append(description)
+    else:
+        metadata["warnings"].append(
+            f"No reference ability metadata loaded from {DREAMSTONE_ABILITIES_FILE}."
+        )
+
+    for ability in metadata["abilities"].values():
+        ability["description"] = " / ".join(ability.pop("descriptions"))
+
+    return metadata
 
 
 def asset_slug(value: object) -> str:
@@ -996,16 +1085,23 @@ def attach_source_data(
             pokemon[species]["evolutions"] = edges
 
 
-def collect_move_data(pokemon: dict[str, dict], move_hints: dict[str, str]) -> list[dict]:
+def collect_move_data(
+    pokemon: dict[str, dict],
+    move_hints: dict[str, str],
+    move_metadata: dict[str, dict],
+) -> list[dict]:
     moves: dict[str, dict] = {}
 
     def ensure_move(move_constant: str) -> dict:
+        name = move_name_from_constant(move_constant, move_hints)
+        metadata = move_metadata.get(normalize_key(name), {})
         move = moves.setdefault(
             move_constant,
             {
                 "constant": move_constant,
-                "name": move_name_from_constant(move_constant, move_hints),
+                "name": name,
                 "learners": {"levelUp": [], "egg": []},
+                **metadata,
             },
         )
         return move
@@ -1028,6 +1124,25 @@ def collect_move_data(pokemon: dict[str, dict], move_hints: dict[str, str]) -> l
             entry["move"] = move["name"]
 
     return sorted(moves.values(), key=lambda item: item["name"])
+
+
+def collect_ability_data(pokemon: dict[str, dict], ability_metadata: dict[str, dict]) -> list[dict]:
+    used_names = sorted(
+        {
+            name
+            for species in pokemon.values()
+            for name in [*species.get("abilities", []), species.get("hiddenAbility", "")]
+            if name
+        }
+    )
+    records = []
+    for name in used_names:
+        record = {"name": name}
+        metadata = ability_metadata.get(normalize_key(name))
+        if metadata:
+            record.update(metadata)
+        records.append(record)
+    return records
 
 
 def attach_locations(pokemon: dict[str, dict], location_data: dict) -> list[str]:
@@ -1109,12 +1224,14 @@ def build_data() -> dict:
     location_data, location_move_hints = parse_location_workbook()
     frontier_data, frontier_move_hints = parse_frontier_workbook()
     trainer_data = inspect_trainer_workbook()
+    reference_metadata = load_reference_metadata()
     move_hints = {**location_move_hints, **frontier_move_hints}
 
     attach_source_data(pokemon, learnsets, egg_moves, evolutions)
     unmatched_location_species = attach_locations(pokemon, location_data)
     asset_counts = attach_asset_paths(pokemon, location_data)
-    moves = collect_move_data(pokemon, move_hints)
+    moves = collect_move_data(pokemon, move_hints, reference_metadata["moves"])
+    abilities = collect_ability_data(pokemon, reference_metadata["abilities"])
 
     pokemon_list = list(pokemon.values())
     for index, species in enumerate(pokemon_list, start=1):
@@ -1137,6 +1254,9 @@ def build_data() -> dict:
         "zCrystals": len(location_data["zCrystals"]),
         "frontierServices": len(frontier_data["services"]),
         "moveTutors": len(frontier_data["moveTutors"]),
+        "abilities": len(abilities),
+        "abilitiesWithMetadata": sum(1 for item in abilities if item.get("metadataSource")),
+        "movesWithMetadata": sum(1 for item in moves if item.get("metadataSource")),
         **asset_counts,
     }
 
@@ -1152,10 +1272,12 @@ def build_data() -> dict:
             "locations": location_data["source"],
             "frontier": frontier_data["source"],
             "trainers": trainer_data["source"],
+            "referenceMetadata": reference_metadata["sources"],
         },
         "sourceCounts": source_counts,
         "pokemon": pokemon_list,
         "moves": moves,
+        "abilities": abilities,
         "locations": location_data["locations"],
         "giftStatic": location_data["giftStatic"],
         "legendary": location_data["legendary"],
@@ -1173,7 +1295,9 @@ def build_data() -> dict:
         "warnings": {
             "unmatchedLocationSpecies": unmatched_location_species,
             "trainerTeams": trainer_data["gap"],
-            "moveMetadata": "No local move metadata table was found; move names are humanized from constants and supplemented from TM/tutor sheets.",
+            "moveMetadata": "Move details are supplemented from Dreamstone Pokerex reference metadata where names match; local Unbound move metadata was not found.",
+            "abilityMetadata": "Ability descriptions are supplemented from Dreamstone Pokerex reference metadata where names match; local Unbound ability metadata was not found.",
+            "referenceMetadata": reference_metadata["warnings"],
         },
     }
 

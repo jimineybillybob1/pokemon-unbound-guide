@@ -15,8 +15,45 @@ const statLabels = {
   spd: "Spe",
 };
 
+const natures = [
+  { name: "Hardy", boost: "", lower: "" },
+  { name: "Lonely", boost: "atk", lower: "def" },
+  { name: "Brave", boost: "atk", lower: "spd" },
+  { name: "Adamant", boost: "atk", lower: "spa" },
+  { name: "Naughty", boost: "atk", lower: "spdef" },
+  { name: "Bold", boost: "def", lower: "atk" },
+  { name: "Docile", boost: "", lower: "" },
+  { name: "Relaxed", boost: "def", lower: "spd" },
+  { name: "Impish", boost: "def", lower: "spa" },
+  { name: "Lax", boost: "def", lower: "spdef" },
+  { name: "Timid", boost: "spd", lower: "atk" },
+  { name: "Hasty", boost: "spd", lower: "def" },
+  { name: "Serious", boost: "", lower: "" },
+  { name: "Jolly", boost: "spd", lower: "spa" },
+  { name: "Naive", boost: "spd", lower: "spdef" },
+  { name: "Modest", boost: "spa", lower: "atk" },
+  { name: "Mild", boost: "spa", lower: "def" },
+  { name: "Quiet", boost: "spa", lower: "spd" },
+  { name: "Bashful", boost: "", lower: "" },
+  { name: "Rash", boost: "spa", lower: "spdef" },
+  { name: "Calm", boost: "spdef", lower: "atk" },
+  { name: "Gentle", boost: "spdef", lower: "def" },
+  { name: "Sassy", boost: "spdef", lower: "spd" },
+  { name: "Careful", boost: "spdef", lower: "spa" },
+  { name: "Quirky", boost: "", lower: "" },
+];
+
+const natureByName = new Map(natures.map((nature) => [nature.name, nature]));
+
 const pokemon = guideData.pokemon.filter((entry) => !entry.isPlaceholder);
 const pokemonByConstant = new Map(pokemon.map((entry) => [entry.constant, entry]));
+const pokemonBySearchName = new Map();
+pokemon.forEach((entry) => {
+  const key = normalize(entry.name);
+  if (!pokemonBySearchName.has(key)) pokemonBySearchName.set(key, entry);
+});
+const moveMetadataByName = new Map(guideData.moves.map((move) => [normalize(move.name), move]));
+const abilityMetadataByName = new Map((guideData.abilities || []).map((ability) => [normalize(ability.name), ability]));
 const moveTutorNames = new Set(
   guideData.frontier.moveTutors.flatMap((tutor) => tutor.moves.map((move) => normalize(move.move))),
 );
@@ -59,6 +96,7 @@ const elements = {
   stoneResultCount: document.querySelector("#stone-result-count"),
   teamSummary: document.querySelector("#team-summary"),
   teamGrid: document.querySelector("#team-grid"),
+  teamPokemonOptions: document.querySelector("#team-pokemon-options"),
 };
 
 const state = {
@@ -91,12 +129,22 @@ function normalize(value) {
 function normalizeTeam(rawTeam) {
   return Array.from({ length: 6 }, (_, index) => {
     const slot = rawTeam?.[index] || {};
-    return {
-      species: pokemonByConstant.has(slot.species) ? slot.species : "",
-      ability: slot.ability || "",
-      moves: Array.from({ length: 4 }, (__, moveIndex) => slot.moves?.[moveIndex] || ""),
-    };
+    return createTeamSlot(slot.species, slot);
   });
+}
+
+function createTeamSlot(species = "", values = {}) {
+  return {
+    species: pokemonByConstant.has(species) ? species : "",
+    nickname: values.nickname || "",
+    ability: values.ability || "",
+    nature: natureByName.has(values.nature) ? values.nature : "Hardy",
+    moves: Array.from({ length: 4 }, (__, moveIndex) => values.moves?.[moveIndex] || ""),
+  };
+}
+
+function pokemonFromTeamSearch(value) {
+  return pokemonBySearchName.get(normalize(value));
 }
 
 function saveCaught() {
@@ -152,10 +200,12 @@ function itemIcon(item, className = "item-icon") {
   return icon;
 }
 
-function statsNode(stats, bst) {
+function statsNode(stats, bst, markers = {}) {
   const wrapper = createElement("div", "stats");
   for (const [key, label] of Object.entries(statLabels)) {
     const item = createElement("span");
+    if (markers.boost === key) item.classList.add("is-boosted");
+    if (markers.lower === key) item.classList.add("is-lowered");
     item.append(createElement("b", "", label), document.createTextNode(String(stats[key] ?? 0)));
     wrapper.append(item);
   }
@@ -163,6 +213,28 @@ function statsNode(stats, bst) {
   bstItem.append(createElement("b", "", "BST"), document.createTextNode(String(bst || 0)));
   wrapper.append(bstItem);
   return wrapper;
+}
+
+function natureSummary(natureName) {
+  const nature = natureByName.get(natureName) || natureByName.get("Hardy");
+  if (!nature.boost || !nature.lower) return "No stat change";
+  return `+10% ${statLabels[nature.boost]}, -10% ${statLabels[nature.lower]}`;
+}
+
+function adjustedStatsForNature(stats, natureName) {
+  const nature = natureByName.get(natureName) || natureByName.get("Hardy");
+  const adjusted = { ...stats };
+  if (nature.boost && nature.lower) {
+    adjusted[nature.boost] = Math.floor((stats[nature.boost] ?? 0) * 1.1);
+    adjusted[nature.lower] = Math.floor((stats[nature.lower] ?? 0) * 0.9);
+  }
+  return { stats: adjusted, markers: { boost: nature.boost, lower: nature.lower } };
+}
+
+function formatBattleValue(value, empty = "-") {
+  if (value === null || value === undefined || value === "") return empty;
+  if (Number(value) === 0) return empty;
+  return String(value);
 }
 
 function pokemonSearchText(entry) {
@@ -592,6 +664,58 @@ function renderItemCard(item) {
   return card;
 }
 
+function metadataValueGrid(values) {
+  const grid = createElement("dl", "metadata-grid");
+  values.forEach(([label, value]) => {
+    const item = createElement("div");
+    item.append(createElement("dt", "", label), createElement("dd", "", value));
+    grid.append(item);
+  });
+  return grid;
+}
+
+function moveDetailsNode(moveName) {
+  if (!moveName) return document.createDocumentFragment();
+  const metadata = moveMetadataByName.get(normalize(moveName));
+  const card = createElement("div", "metadata-card metadata-card--move");
+  const header = createElement("div", "metadata-card__header");
+  header.append(createElement("strong", "", moveName));
+  if (metadata?.type) header.append(typeBadge(metadata.type));
+  card.append(header);
+
+  if (!metadata?.metadataSource) {
+    card.append(createElement("p", "", "Move details are not available in the local/reference metadata."));
+    return card;
+  }
+
+  card.append(
+    metadataValueGrid([
+      ["Category", metadata.category || "-"],
+      ["Power", formatBattleValue(metadata.power)],
+      ["Accuracy", formatBattleValue(metadata.accuracy)],
+      ["PP", formatBattleValue(metadata.pp)],
+      ["Priority", metadata.priority === undefined || metadata.priority === null ? "-" : String(metadata.priority)],
+      ["Contact", metadata.contact ? "Yes" : "No"],
+    ]),
+  );
+  const description = metadata.effect || metadata.description;
+  if (description) card.append(createElement("p", "", description));
+  return card;
+}
+
+function abilityDetailsNode(abilityName) {
+  if (!abilityName) return document.createDocumentFragment();
+  const metadata = abilityMetadataByName.get(normalize(abilityName));
+  const card = createElement("div", "metadata-card metadata-card--ability");
+  card.append(createElement("strong", "", abilityName));
+  if (metadata?.description) {
+    card.append(createElement("p", "", metadata.description));
+  } else {
+    card.append(createElement("p", "", "Ability details are not available in the local/reference metadata."));
+  }
+  return card;
+}
+
 function moveChoicesForPokemon(entry) {
   const choices = [];
   const seen = new Set();
@@ -628,11 +752,14 @@ function renderTeamCard(slot, index) {
   const header = createElement("header");
   header.append(createElement("h2", "", `Slot ${index + 1}`), entry ? pill(`${entry.bst} BST`) : pill("Empty"));
   card.append(header);
+
   if (entry) {
+    const shownName = slot.nickname.trim() || entry.name;
     const identity = createElement("div", "team-card__identity");
     identity.append(spriteWell(entry, "team-sprite-well"));
     const copy = createElement("div");
-    copy.append(createElement("span", "dex-number", `#${entry.guideNumber}`), createElement("h3", "", entry.name));
+    copy.append(createElement("h3", "", shownName));
+    if (slot.nickname.trim()) copy.append(createElement("small", "team-species-name", entry.name));
     copy.append(renderTypeRow(entry.types));
     identity.append(copy);
     card.append(identity);
@@ -640,19 +767,42 @@ function renderTeamCard(slot, index) {
 
   const speciesLabel = createElement("label");
   speciesLabel.append(createElement("span", "", "Pokemon"));
-  const select = document.createElement("select");
-  select.dataset.teamSpecies = String(index);
-  select.append(new Option("Empty slot", ""));
-  pokemon.forEach((pokemonEntry) => {
-    select.append(new Option(`#${pokemonEntry.guideNumber} ${pokemonEntry.name}`, pokemonEntry.constant));
-  });
-  select.value = slot.species;
-  speciesLabel.append(select);
+  const speciesSearch = document.createElement("input");
+  speciesSearch.type = "search";
+  speciesSearch.setAttribute("list", "team-pokemon-options");
+  speciesSearch.placeholder = "Search Pokemon";
+  speciesSearch.autocomplete = "off";
+  speciesSearch.dataset.teamSpeciesSearch = String(index);
+  speciesSearch.value = entry?.name || "";
+  speciesLabel.append(speciesSearch);
   card.append(speciesLabel);
 
   if (!entry) return card;
 
-  card.append(statsNode(entry.stats, entry.bst));
+  const formGrid = createElement("div", "team-form-grid");
+
+  const nicknameLabel = createElement("label");
+  nicknameLabel.append(createElement("span", "", "Nickname"));
+  const nicknameInput = document.createElement("input");
+  nicknameInput.type = "text";
+  nicknameInput.placeholder = entry.name;
+  nicknameInput.maxLength = 24;
+  nicknameInput.dataset.teamNickname = String(index);
+  nicknameInput.value = slot.nickname;
+  nicknameLabel.append(nicknameInput);
+  formGrid.append(nicknameLabel);
+
+  const natureLabel = createElement("label");
+  natureLabel.append(createElement("span", "", "Nature"));
+  const natureSelect = document.createElement("select");
+  natureSelect.dataset.teamNature = String(index);
+  natures.forEach((nature) => {
+    const suffix = nature.boost ? ` (+${statLabels[nature.boost]} / -${statLabels[nature.lower]})` : " (neutral)";
+    natureSelect.append(new Option(`${nature.name}${suffix}`, nature.name));
+  });
+  natureSelect.value = slot.nature;
+  natureLabel.append(natureSelect);
+  formGrid.append(natureLabel);
 
   const abilityLabel = createElement("label");
   abilityLabel.append(createElement("span", "", "Ability"));
@@ -663,11 +813,18 @@ function renderTeamCard(slot, index) {
   if (!abilities.includes(slot.ability)) slot.ability = abilities[0] || "";
   abilitySelect.value = slot.ability;
   abilityLabel.append(abilitySelect);
-  card.append(abilityLabel);
+  formGrid.append(abilityLabel);
+  card.append(formGrid);
+
+  card.append(createElement("p", "nature-note", natureSummary(slot.nature)));
+  const adjusted = adjustedStatsForNature(entry.stats, slot.nature);
+  card.append(statsNode(adjusted.stats, entry.bst, adjusted.markers));
+  card.append(abilityDetailsNode(slot.ability));
 
   const moves = moveChoicesForPokemon(entry);
   const moveGrid = createElement("div", "team-move-list");
   for (let moveIndex = 0; moveIndex < 4; moveIndex += 1) {
+    const moveSlot = createElement("div", "team-move-slot");
     const moveLabel = createElement("label");
     moveLabel.append(createElement("span", "", `Move ${moveIndex + 1}`));
     const moveSelect = document.createElement("select");
@@ -677,7 +834,9 @@ function renderTeamCard(slot, index) {
     if (!moves.some((move) => move.value === slot.moves[moveIndex])) slot.moves[moveIndex] = "";
     moveSelect.value = slot.moves[moveIndex];
     moveLabel.append(moveSelect);
-    moveGrid.append(moveLabel);
+    moveSlot.append(moveLabel);
+    if (slot.moves[moveIndex]) moveSlot.append(moveDetailsNode(slot.moves[moveIndex]));
+    moveGrid.append(moveSlot);
   }
   card.append(moveGrid);
 
@@ -711,6 +870,11 @@ function switchView(view) {
 }
 
 function populateFilters() {
+  if (elements.teamPokemonOptions) {
+    const options = pokemon.map((entry) => new Option(entry.name, entry.name));
+    elements.teamPokemonOptions.replaceChildren(...options);
+  }
+
   const typeOptions = ["all", ...new Set(pokemon.flatMap((entry) => entry.types))].sort((a, b) =>
     a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b),
   );
@@ -821,7 +985,7 @@ function bindEvents() {
     if (teamButton) {
       const emptyIndex = state.team.findIndex((slot) => !slot.species);
       const index = emptyIndex === -1 ? 0 : emptyIndex;
-      state.team[index] = { species: teamButton.dataset.addTeam, ability: "", moves: ["", "", "", ""] };
+      state.team[index] = createTeamSlot(teamButton.dataset.addTeam);
       saveTeam();
       switchView("team");
       renderTeam();
@@ -838,10 +1002,15 @@ function bindEvents() {
       renderCaught();
     }
 
-    const speciesSelect = event.target.closest("[data-team-species]");
-    if (speciesSelect) {
-      const index = Number(speciesSelect.dataset.teamSpecies);
-      state.team[index] = { species: speciesSelect.value, ability: "", moves: ["", "", "", ""] };
+    const speciesSearch = event.target.closest("[data-team-species-search]");
+    if (speciesSearch) {
+      const index = Number(speciesSearch.dataset.teamSpeciesSearch);
+      const matched = pokemonFromTeamSearch(speciesSearch.value);
+      if (speciesSearch.value.trim() && !matched) {
+        speciesSearch.value = pokemonByConstant.get(state.team[index].species)?.name || "";
+        return;
+      }
+      state.team[index] = createTeamSlot(matched?.constant || "");
       saveTeam();
       renderTeam();
     }
@@ -850,12 +1019,54 @@ function bindEvents() {
     if (abilitySelect) {
       state.team[Number(abilitySelect.dataset.teamAbility)].ability = abilitySelect.value;
       saveTeam();
+      renderTeam();
+    }
+
+    const natureSelect = event.target.closest("[data-team-nature]");
+    if (natureSelect) {
+      const index = Number(natureSelect.dataset.teamNature);
+      state.team[index].nature = natureSelect.value;
+      saveTeam();
+      renderTeam();
     }
 
     const moveSelect = event.target.closest("[data-team-move]");
     if (moveSelect) {
       const [slotIndex, moveIndex] = moveSelect.dataset.teamMove.split(":").map(Number);
       state.team[slotIndex].moves[moveIndex] = moveSelect.value;
+      saveTeam();
+      renderTeam();
+    }
+
+    const nicknameInput = event.target.closest("[data-team-nickname]");
+    if (nicknameInput) {
+      state.team[Number(nicknameInput.dataset.teamNickname)].nickname = nicknameInput.value;
+      saveTeam();
+      renderTeam();
+    }
+  });
+
+  document.addEventListener("input", (event) => {
+    const speciesSearch = event.target.closest("[data-team-species-search]");
+    if (speciesSearch) {
+      const index = Number(speciesSearch.dataset.teamSpeciesSearch);
+      const value = speciesSearch.value.trim();
+      const matched = pokemonFromTeamSearch(value);
+      if (!value && state.team[index].species) {
+        state.team[index] = createTeamSlot("");
+        saveTeam();
+        renderTeam();
+      } else if (matched && state.team[index].species !== matched.constant) {
+        state.team[index] = createTeamSlot(matched.constant);
+        saveTeam();
+        renderTeam();
+      }
+      return;
+    }
+
+    const nicknameInput = event.target.closest("[data-team-nickname]");
+    if (nicknameInput) {
+      state.team[Number(nicknameInput.dataset.teamNickname)].nickname = nicknameInput.value;
       saveTeam();
     }
   });

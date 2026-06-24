@@ -20,6 +20,11 @@ Regenerate guide data:
 & 'C:\Users\james\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' scripts\build_data.py
 ```
 
+When available, the build also reads the sibling Dreamstone guide data files in
+`C:\Users\james\Documents\Pokemon Dreamstone Mysteries\data` to supplement move power,
+accuracy, PP, category, effects, and ability descriptions by matching names. The Unbound
+source files remain authoritative for Pokemon, learnsets, locations, items, and availability.
+
 Validate parsed counts and obvious consistency checks:
 
 ```powershell
@@ -41,7 +46,7 @@ The raw `documentation/` folder is intentionally ignored by git. Keep those sour
 ## Visual Assets
 
 - `assets/fonts/pokemon-gb.ttf`: Pokemon GB-style UI font, copied from the Dreamstone guide assets.
-- `assets/pokemon/`: compact Pokemon sprites from the Dreamstone guide's vendored PokéSprite assets.
+- `assets/pokemon/`: compact Pokemon sprites from the Dreamstone guide's vendored PokeSprite assets.
 - `assets/items/`: item, TM, Mega Stone, and Z-Crystal icons from the Dreamstone guide asset set.
 
 The generated data includes resolved `sprite` and `icon` paths, and `scripts/validate_data.py` checks that referenced files exist.
@@ -49,6 +54,6 @@ The generated data includes resolved `sprite` and `icon` paths, and `scripts/val
 ## Known Gaps
 
 - Trainer and boss-team features are intentionally not built yet because the local trainer workbook does not include reliable trainer team tables.
-- Move metadata is limited to names inferred from constants and TM/tutor sheets; no local power, accuracy, PP, category, or description table is present yet.
+- Move and ability detail text is reference-supplemented from the Dreamstone Pokerex data where names match; no local Unbound-specific power, accuracy, PP, category, or description table is present yet.
 - Maps, trainer sprites, and cloud sync are left for later passes.
 - Some encounter species/form names from spreadsheets do not yet match source constants exactly; validation reports the unmatched count.
