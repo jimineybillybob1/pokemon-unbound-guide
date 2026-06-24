@@ -34,6 +34,23 @@ def main() -> int:
     items = data.get("items", {})
     frontier = data.get("frontier", {})
 
+    def asset_exists(asset_path: str) -> bool:
+        return bool(asset_path) and (ROOT_DIR / asset_path).exists()
+
+    def collect_icon_paths() -> list[str]:
+        paths: list[str] = []
+        for entry in pokemon:
+            paths.extend(item.get("icon", "") for item in entry.get("heldItems", []))
+        for row in items.get("tmHm", []):
+            paths.append(row.get("icon", ""))
+        for row in items.get("megaStones", []):
+            paths.append(row.get("icon", ""))
+        for row in items.get("zCrystals", []):
+            paths.append(row.get("icon", ""))
+        for row in items.get("wildHeldItems", []):
+            paths.extend(item.get("icon", "") for item in row.get("items", []))
+        return [path for path in paths if path]
+
     pokemon_constants = [entry.get("constant") for entry in pokemon]
     duplicate_pokemon = sorted({value for value in pokemon_constants if pokemon_constants.count(value) > 1})
     move_constants = [entry.get("constant") for entry in moves]
@@ -47,6 +64,13 @@ def main() -> int:
     )
     check(counts.get("pokemonWithLearnsets", 0) >= 900, "Too few Pokemon have level-up learnsets")
     check(counts.get("pokemonWithEvolutions", 0) >= 500, "Too few Pokemon have evolution entries")
+    check(counts.get("pokemonSprites", 0) >= 1000, "Too few Pokemon/form records have sprite assets")
+    missing_sprites = [
+        entry.get("sprite")
+        for entry in real_pokemon
+        if entry.get("sprite") and not asset_exists(entry.get("sprite", ""))
+    ]
+    check(not missing_sprites, f"Pokemon sprite paths are missing files: {missing_sprites[:10]}")
 
     check(len(moves) >= 500, f"Expected at least 500 learned move records, found {len(moves)}")
     check(len(moves) == len(set(move_constants)), f"Duplicate move constants: {duplicate_moves[:10]}")
@@ -66,6 +90,9 @@ def main() -> int:
     check(len(items.get("tmHm", [])) >= 120, "TM/HM rows are unexpectedly low")
     check(len(items.get("megaStones", [])) >= 45, "Mega Stone rows are unexpectedly low")
     check(len(items.get("zCrystals", [])) >= 30, "Z-Crystal rows are unexpectedly low")
+    check(counts.get("itemIcons", 0) >= 500, "Too few item records have icon assets")
+    missing_icons = [path for path in collect_icon_paths() if not asset_exists(path)]
+    check(not missing_icons, f"Item icon paths are missing files: {missing_icons[:10]}")
 
     check(len(frontier.get("services", [])) >= 15, "Battle Frontier service count is unexpectedly low")
     check(len(frontier.get("moveTutors", [])) >= 8, "Move tutor count is unexpectedly low")

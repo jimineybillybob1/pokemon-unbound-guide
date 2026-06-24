@@ -127,6 +127,31 @@ function pill(text) {
   return createElement("span", "pill", text);
 }
 
+function imageNode(src, alt, width = 64, height = 64) {
+  const image = document.createElement("img");
+  image.src = src || "assets/unbound-mark.png";
+  image.alt = alt || "";
+  image.width = width;
+  image.height = height;
+  image.loading = "lazy";
+  image.addEventListener("error", () => {
+    image.src = "assets/unbound-mark.png";
+  });
+  return image;
+}
+
+function spriteWell(entry, className = "sprite-well", size = 96) {
+  const well = createElement("span", className);
+  well.append(imageNode(entry?.sprite, entry ? `${entry.name} sprite` : "", size, size));
+  return well;
+}
+
+function itemIcon(item, className = "item-icon") {
+  const icon = createElement("span", className);
+  icon.append(imageNode(item?.icon, item?.name || item?.item || "", 44, 44));
+  return icon;
+}
+
 function statsNode(stats, bst) {
   const wrapper = createElement("div", "stats");
   for (const [key, label] of Object.entries(statLabels)) {
@@ -172,14 +197,28 @@ function renderTypeRow(types) {
 }
 
 function renderPokemonCard(entry) {
-  const card = createElement("article", "pokemon-card");
-  const header = createElement("header");
-  const titleBlock = createElement("div");
+  const card = createElement("article", `pokemon-card ${state.caught.has(entry.constant) ? "is-caught" : ""}`);
+
+  const caughtButton = createElement(
+    "button",
+    "caught-button",
+    state.caught.has(entry.constant) ? "Caught" : "Mark caught",
+  );
+  caughtButton.type = "button";
+  caughtButton.dataset.toggleCaught = entry.constant;
+  const ball = createElement("span", "caught-button__ball");
+  ball.setAttribute("aria-hidden", "true");
+  caughtButton.prepend(ball);
+  card.append(caughtButton);
+
+  const identity = createElement("div", "pokemon-card__identity");
+  identity.append(spriteWell(entry));
+  const titleBlock = createElement("div", "pokemon-card__title");
   titleBlock.append(createElement("span", "dex-number", `#${entry.guideNumber}`));
   titleBlock.append(createElement("h2", "", entry.name));
-  header.append(titleBlock, pill(`${entry.bst || 0} BST`));
-  card.append(header);
-  card.append(renderTypeRow(entry.types));
+  titleBlock.append(renderTypeRow(entry.types));
+  identity.append(titleBlock);
+  card.append(identity);
 
   const abilityText = [
     entry.abilities.length ? `Abilities: ${entry.abilities.join(", ")}` : "",
@@ -187,16 +226,17 @@ function renderPokemonCard(entry) {
   ]
     .filter(Boolean)
     .join(" | ");
-  if (abilityText) card.append(createElement("p", "", abilityText));
+  if (abilityText) card.append(createElement("p", "pokemon-note-line", abilityText));
 
   if (entry.heldItems.length) {
-    card.append(
-      createElement(
-        "p",
-        "",
-        `Held items: ${entry.heldItems.map((item) => `${item.item} (${item.slot})`).join(", ")}`,
-      ),
-    );
+    const heldItems = createElement("div", "held-item-row");
+    entry.heldItems.forEach((heldItem) => {
+      const item = createElement("span", "held-item-chip");
+      item.append(itemIcon(heldItem, "item-icon item-icon--small"));
+      item.append(createElement("span", "", `${heldItem.item} (${heldItem.slot})`));
+      heldItems.append(item);
+    });
+    card.append(heldItems);
   }
 
   card.append(statsNode(entry.stats, entry.bst));
@@ -213,22 +253,14 @@ function renderPokemonCard(entry) {
       .slice(0, 3)
       .map((location) => `${location.location} (${location.method})`)
       .join("; ");
-    card.append(createElement("p", "", locationText));
+    card.append(createElement("p", "pokemon-note-line", locationText));
   }
 
   const actions = createElement("div", "pokemon-actions");
-  const caughtButton = createElement(
-    "button",
-    `mini-button ${state.caught.has(entry.constant) ? "is-active" : ""}`,
-    state.caught.has(entry.constant) ? "Caught" : "Mark Caught",
-  );
-  caughtButton.type = "button";
-  caughtButton.dataset.toggleCaught = entry.constant;
-
   const teamButton = createElement("button", "mini-button", "Add To Team");
   teamButton.type = "button";
   teamButton.dataset.addTeam = entry.constant;
-  actions.append(caughtButton, teamButton);
+  actions.append(teamButton);
   card.append(actions);
   return card;
 }
@@ -371,7 +403,12 @@ function renderCaught() {
     checkbox.type = "checkbox";
     checkbox.checked = state.caught.has(entry.constant);
     checkbox.dataset.caughtCheckbox = entry.constant;
-    row.append(checkbox, createElement("span", "", `#${entry.guideNumber} ${entry.name}`));
+    const identity = createElement("span", "caught-row__identity");
+    identity.append(spriteWell(entry, "caught-row__sprite", 38));
+    const copy = createElement("span", "caught-row__copy");
+    copy.append(createElement("small", "", `#${entry.guideNumber}`), createElement("strong", "", entry.name));
+    identity.append(copy);
+    row.append(checkbox, identity);
     fragment.append(row);
   });
   elements.caughtList.replaceChildren(fragment);
@@ -498,13 +535,28 @@ function renderItemTable() {
   rows.forEach((row) => {
     const tableRow = document.createElement("tr");
     columns.forEach(([key]) => {
-      let value = row[key];
-      if (Array.isArray(value)) {
-        value = value
-          .map((item) => (typeof item === "string" ? item : `${item.item}${item.slot ? ` (${item.slot})` : ""}`))
-          .join(", ");
+      const cell = document.createElement("td");
+      const value = row[key];
+      if (key === "name" && row.icon) {
+        const item = createElement("span", "table-item");
+        item.append(itemIcon(row, "item-icon item-icon--small"), createElement("span", "", value || ""));
+        cell.append(item);
+      } else if (key === "items" && Array.isArray(value)) {
+        const itemList = createElement("div", "table-item-list");
+        value.forEach((heldItem) => {
+          const item = createElement("span", "table-item");
+          item.append(itemIcon(heldItem, "item-icon item-icon--tiny"));
+          item.append(createElement("span", "", `${heldItem.item}${heldItem.slot ? ` (${heldItem.slot})` : ""}`));
+          itemList.append(item);
+        });
+        if (!itemList.childNodes.length) itemList.append(createElement("span", "", "None listed"));
+        cell.append(itemList);
+      } else if (Array.isArray(value)) {
+        cell.textContent = value.map((item) => (typeof item === "string" ? item : item.item || "")).join(", ");
+      } else {
+        cell.textContent = value || "";
       }
-      tableRow.append(createElement("td", "", value || ""));
+      tableRow.append(cell);
     });
     body.append(tableRow);
   });
@@ -529,7 +581,14 @@ function renderStones() {
 
 function renderItemCard(item) {
   const card = createElement("article", "item-card");
-  card.append(createElement("h3", "", item.name), createElement("p", "", item.location));
+  const header = createElement("header", "item-card__header");
+  header.append(itemIcon(item, "item-icon item-icon--large"));
+  const copy = createElement("span");
+  copy.append(createElement("small", "", item.number ? `#${item.number}` : "Item"), createElement("h3", "", item.name));
+  header.append(copy);
+  card.append(header);
+  if (item.type) card.append(renderTypeRow([item.type]));
+  card.append(createElement("p", "", item.location));
   return card;
 }
 
@@ -569,6 +628,15 @@ function renderTeamCard(slot, index) {
   const header = createElement("header");
   header.append(createElement("h2", "", `Slot ${index + 1}`), entry ? pill(`${entry.bst} BST`) : pill("Empty"));
   card.append(header);
+  if (entry) {
+    const identity = createElement("div", "team-card__identity");
+    identity.append(spriteWell(entry, "team-sprite-well"));
+    const copy = createElement("div");
+    copy.append(createElement("span", "dex-number", `#${entry.guideNumber}`), createElement("h3", "", entry.name));
+    copy.append(renderTypeRow(entry.types));
+    identity.append(copy);
+    card.append(identity);
+  }
 
   const speciesLabel = createElement("label");
   speciesLabel.append(createElement("span", "", "Pokemon"));
@@ -584,7 +652,7 @@ function renderTeamCard(slot, index) {
 
   if (!entry) return card;
 
-  card.append(renderTypeRow(entry.types), statsNode(entry.stats, entry.bst));
+  card.append(statsNode(entry.stats, entry.bst));
 
   const abilityLabel = createElement("label");
   abilityLabel.append(createElement("span", "", "Ability"));

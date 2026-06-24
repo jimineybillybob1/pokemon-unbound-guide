@@ -12,11 +12,15 @@ import openpyxl
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DOCS_DIR = ROOT_DIR / "documentation"
 DATA_DIR = ROOT_DIR / "data"
+ASSETS_DIR = ROOT_DIR / "assets"
+POKEMON_ASSETS_DIR = ASSETS_DIR / "pokemon"
+ITEM_ASSETS_DIR = ASSETS_DIR / "items"
 
 BASE_STATS_FILE = DOCS_DIR / "Base_Stats.txt"
 EVOLUTION_FILE = DOCS_DIR / "Evolution Table.txt"
 LEARNSETS_FILE = DOCS_DIR / "Learnsets.txt"
 EGG_MOVES_FILE = DOCS_DIR / "Egg_Moves.txt"
+POKEMON_SPRITE_FALLBACK = "assets/unbound-mark.png"
 
 SKIP_VALUES = {"", "x", "-", "n/a", "none"}
 METHOD_MARKERS = {
@@ -47,6 +51,40 @@ SPECIAL_SPECIES_NAMES = {
     "ZYGARDE_10": "Zygarde 10%",
     "ZYGARDE_50": "Zygarde 50%",
     "ZYGARDE_COMPLETE": "Zygarde Complete",
+}
+
+SPECIAL_SPRITE_SLUGS = {
+    "NIDORAN_F": "nidoran-f",
+    "NIDORAN_M": "nidoran-m",
+    "MR_MIME": "mr-mime",
+    "MIME_JR": "mime-jr",
+    "HO_OH": "ho-oh",
+    "PORYGON_Z": "porygon-z",
+    "TYPE_NULL": "type-null",
+    "JANGMO_O": "jangmo-o",
+    "HAKAMO_O": "hakamo-o",
+    "KOMMO_O": "kommo-o",
+    "FARFETCHD": "farfetchd",
+    "SIRFETCHD": "sirfetchd",
+    "WISHIWASHI_S": "wishiwashi-school",
+    "AEGISLASH_BLADE": "aegislash-blade",
+    "ZYGARDE_10": "zygarde-10",
+    "ZYGARDE_50": "zygarde",
+    "ZYGARDE_COMPLETE": "zygarde-complete",
+    "ORICORIO_Y": "oricorio-pom-pom",
+    "ORICORIO_P": "oricorio-pau",
+    "ORICORIO_S": "oricorio-sensu",
+}
+
+REGIONAL_SUFFIXES = {
+    "A": "alola",
+    "ALOLA": "alola",
+    "G": "galar",
+    "GALAR": "galar",
+    "H": "hisui",
+    "HISUI": "hisui",
+    "P": "paldea",
+    "PALDEA": "paldea",
 }
 
 MOVE_NAME_OVERRIDES = {
@@ -116,6 +154,129 @@ def read_text(path: Path) -> str:
 
 def normalize_key(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "", clean(value).lower())
+
+
+def asset_slug(value: object) -> str:
+    text = clean(value).lower()
+    text = (
+        text.replace("'", "")
+        .replace(":", "")
+        .replace(".", "")
+        .replace("%", "")
+        .replace("♀", "f")
+        .replace("♂", "m")
+    )
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return text.strip("-")
+
+
+def relative_asset(path: Path) -> str:
+    return path.relative_to(ROOT_DIR).as_posix()
+
+
+def build_asset_index(root: Path) -> dict[str, list[str]]:
+    index: dict[str, list[str]] = defaultdict(list)
+    if not root.exists():
+        return index
+
+    for path in sorted(root.rglob("*.png")):
+        rel = relative_asset(path)
+        stem = path.stem.lower()
+        keys = {stem}
+        if stem.endswith("--bag"):
+            keys.add(stem.removesuffix("--bag"))
+        if stem.endswith("--held"):
+            keys.add(stem.removesuffix("--held"))
+        for key in keys:
+            index[key].append(rel)
+
+    for key, paths in index.items():
+        paths.sort(
+            key=lambda item: (
+                0 if "/custom/" in item else 1,
+                0 if item.endswith("--bag.png") else 1,
+                1 if item.endswith("--held.png") else 0,
+                item.count("/"),
+                item,
+            )
+        )
+    return index
+
+
+def sprite_base_slug(species_id: str) -> str:
+    if species_id in SPECIAL_SPRITE_SLUGS:
+        return SPECIAL_SPRITE_SLUGS[species_id]
+    return asset_slug(token_words(species_id))
+
+
+def species_sprite_candidates(constant: str, display_name: str) -> list[str]:
+    species_id = constant.removeprefix("SPECIES_")
+    tokens = species_id.split("_")
+    candidates: list[str] = []
+
+    def add(candidate: str) -> None:
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+
+    add(SPECIAL_SPRITE_SLUGS.get(species_id, ""))
+
+    if tokens and tokens[-1] in REGIONAL_SUFFIXES:
+        region = REGIONAL_SUFFIXES[tokens[-1]]
+        base_id = "_".join(tokens[:-1])
+        add(f"{sprite_base_slug(base_id)}-{region}")
+
+    if tokens and tokens[-1] == "MEGA":
+        add(f"{sprite_base_slug('_'.join(tokens[:-1]))}-mega")
+    elif len(tokens) >= 2 and tokens[-2] == "MEGA":
+        add(f"{sprite_base_slug('_'.join(tokens[:-2]))}-mega-{asset_slug(tokens[-1])}")
+
+    if tokens and tokens[-1] == "GIGA":
+        add(f"{sprite_base_slug('_'.join(tokens[:-1]))}-gmax")
+    if tokens and tokens[-1] == "PRIMAL":
+        add(f"{sprite_base_slug('_'.join(tokens[:-1]))}-primal")
+
+    if len(tokens) > 1:
+        add(f"{sprite_base_slug(tokens[0])}-{'-'.join(asset_slug(part) for part in tokens[1:] if part)}")
+
+    add(sprite_base_slug(species_id))
+    add(asset_slug(display_name))
+    return candidates
+
+
+def resolve_sprite(pokemon_entry: dict, sprite_index: dict[str, list[str]]) -> str:
+    for candidate in species_sprite_candidates(pokemon_entry["constant"], pokemon_entry["name"]):
+        matches = sprite_index.get(candidate)
+        if matches:
+            return matches[0]
+    return POKEMON_SPRITE_FALLBACK
+
+
+def resolve_item_icon(
+    name: str,
+    item_index: dict[str, list[str]],
+    *,
+    item_type: str = "",
+    machine_kind: str = "",
+) -> str:
+    slug = asset_slug(name)
+    candidates = [slug, f"{slug}--bag", f"{slug}--held"]
+    if machine_kind and item_type:
+        candidates.append(f"{asset_slug(item_type)}")
+    if machine_kind == "tm":
+        candidates.extend(["tm", "normal"])
+    elif machine_kind == "hm":
+        candidates.extend(["hm", "normal"])
+
+    for candidate in candidates:
+        matches = item_index.get(candidate)
+        if not matches:
+            continue
+        if machine_kind and item_type:
+            typed_path = f"assets/items/{machine_kind}/{asset_slug(item_type)}.png"
+            if typed_path in matches:
+                return typed_path
+        return matches[0]
+    return ""
 
 
 def token_words(token: str) -> str:
@@ -898,6 +1059,48 @@ def attach_locations(pokemon: dict[str, dict], location_data: dict) -> list[str]
     return sorted(unmatched)
 
 
+def attach_asset_paths(pokemon: dict[str, dict], location_data: dict) -> dict[str, int]:
+    sprite_index = build_asset_index(POKEMON_ASSETS_DIR)
+    item_index = build_asset_index(ITEM_ASSETS_DIR)
+    pokemon_with_sprites = 0
+    item_icons = 0
+
+    def decorate_item(record: dict, name_key: str = "name", *, machine_kind: str = "") -> None:
+        nonlocal item_icons
+        icon = resolve_item_icon(
+            record.get(name_key, ""),
+            item_index,
+            item_type=record.get("type", ""),
+            machine_kind=machine_kind,
+        )
+        if icon:
+            record["icon"] = icon
+            item_icons += 1
+
+    for species in pokemon.values():
+        species["sprite"] = resolve_sprite(species, sprite_index)
+        if species["sprite"] != POKEMON_SPRITE_FALLBACK:
+            pokemon_with_sprites += 1
+        for held_item in species.get("heldItems", []):
+            decorate_item(held_item, "item")
+
+    for record in location_data.get("tmHm", []):
+        machine_kind = "hm" if str(record.get("number", "")).upper().startswith("HM") else "tm"
+        decorate_item(record, machine_kind=machine_kind)
+    for record in location_data.get("megaStones", []):
+        decorate_item(record)
+    for record in location_data.get("zCrystals", []):
+        decorate_item(record)
+    for record in location_data.get("wildHeldItems", []):
+        for item in record.get("items", []):
+            decorate_item(item, "item")
+
+    return {
+        "pokemonSprites": pokemon_with_sprites,
+        "itemIcons": item_icons,
+    }
+
+
 def build_data() -> dict:
     pokemon = parse_base_stats()
     learnsets = parse_learnsets()
@@ -910,6 +1113,7 @@ def build_data() -> dict:
 
     attach_source_data(pokemon, learnsets, egg_moves, evolutions)
     unmatched_location_species = attach_locations(pokemon, location_data)
+    asset_counts = attach_asset_paths(pokemon, location_data)
     moves = collect_move_data(pokemon, move_hints)
 
     pokemon_list = list(pokemon.values())
@@ -933,6 +1137,7 @@ def build_data() -> dict:
         "zCrystals": len(location_data["zCrystals"]),
         "frontierServices": len(frontier_data["services"]),
         "moveTutors": len(frontier_data["moveTutors"]),
+        **asset_counts,
     }
 
     return {
