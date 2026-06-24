@@ -975,11 +975,14 @@ th {
 }
 
 .team-grid {
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
 }
 
 .team-card {
   display: grid;
+  align-content: start;
+  align-self: start;
   gap: 10px;
 }
 
@@ -1129,6 +1132,10 @@ th {
   .toolbar {
     grid-template-columns: 1fr 1fr;
   }
+
+  .team-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -1152,6 +1159,10 @@ th {
 
   .view-tabs {
     top: 69px;
+  }
+
+  .team-grid {
+    grid-template-columns: 1fr;
   }
 
   .pokemon-card__identity,
