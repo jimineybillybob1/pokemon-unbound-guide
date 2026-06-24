@@ -47,6 +47,15 @@ const natureByName = new Map(natures.map((nature) => [nature.name, nature]));
 
 const pokemon = guideData.pokemon.filter((entry) => !entry.isPlaceholder);
 const pokemonByConstant = new Map(pokemon.map((entry) => [entry.constant, entry]));
+const evolutionParentsByConstant = new Map();
+pokemon.forEach((entry) => {
+  entry.evolutions.forEach((evolution) => {
+    if (!pokemonByConstant.has(evolution.target)) return;
+    const parents = evolutionParentsByConstant.get(evolution.target) || [];
+    parents.push({ source: entry, evolution });
+    evolutionParentsByConstant.set(evolution.target, parents);
+  });
+});
 const pokemonBySearchName = new Map();
 pokemon.forEach((entry) => {
   const key = normalize(entry.name);
@@ -268,8 +277,47 @@ function renderTypeRow(types) {
   return row;
 }
 
+function evolutionNavButton(target, method) {
+  const button = createElement("button", "mini-button evolution-button");
+  button.type = "button";
+  button.dataset.focusPokemon = target.constant;
+  button.append(createElement("strong", "", target.name));
+  if (method) button.append(createElement("small", "", method));
+  return button;
+}
+
+function renderEvolutionNav(entry) {
+  const parents = evolutionParentsByConstant.get(entry.constant) || [];
+  const children = entry.evolutions
+    .map((evolution) => ({ target: pokemonByConstant.get(evolution.target), method: evolution.method }))
+    .filter((item) => item.target);
+  if (!parents.length && !children.length) return null;
+
+  const section = createElement("div", "evolution-links");
+  if (parents.length) {
+    const group = createElement("div", "evolution-link-group");
+    group.append(createElement("span", "card-label", "Evolves from"));
+    const row = createElement("div", "evolution-button-row");
+    parents.forEach(({ source, evolution }) => row.append(evolutionNavButton(source, evolution.method)));
+    group.append(row);
+    section.append(group);
+  }
+
+  if (children.length) {
+    const group = createElement("div", "evolution-link-group");
+    group.append(createElement("span", "card-label", "Evolves to"));
+    const row = createElement("div", "evolution-button-row");
+    children.forEach(({ target, method }) => row.append(evolutionNavButton(target, method)));
+    group.append(row);
+    section.append(group);
+  }
+
+  return section;
+}
+
 function renderPokemonCard(entry) {
   const card = createElement("article", `pokemon-card ${state.caught.has(entry.constant) ? "is-caught" : ""}`);
+  card.dataset.pokemonCard = entry.constant;
 
   const caughtButton = createElement(
     "button",
@@ -328,12 +376,8 @@ function renderPokemonCard(entry) {
     card.append(createElement("p", "pokemon-note-line", locationText));
   }
 
-  const actions = createElement("div", "pokemon-actions");
-  const teamButton = createElement("button", "mini-button", "Add To Team");
-  teamButton.type = "button";
-  teamButton.dataset.addTeam = entry.constant;
-  actions.append(teamButton);
-  card.append(actions);
+  const evolutionNav = renderEvolutionNav(entry);
+  if (evolutionNav) card.append(evolutionNav);
   return card;
 }
 
@@ -350,6 +394,22 @@ function renderDex(resetLimit = false) {
   elements.dexGrid.replaceChildren(fragment);
   elements.dexResultCount.textContent = `Showing ${Math.min(list.length, state.dexLimit)} of ${list.length}`;
   elements.dexLoadMore.hidden = state.dexLimit >= list.length;
+}
+
+function focusDexPokemon(constant) {
+  const target = pokemonByConstant.get(constant);
+  if (!target) return;
+  switchView("dex");
+  elements.dexSearch.value = target.name;
+  elements.typeFilter.value = "all";
+  elements.locationFilter.value = "all";
+  if (target.isPlaceholder) elements.hidePlaceholders.checked = false;
+  renderDex(true);
+  const card = elements.dexGrid.querySelector(`[data-pokemon-card="${constant}"]`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.classList.add("is-focused");
+  window.setTimeout(() => card.classList.remove("is-focused"), 1800);
 }
 
 function filteredLocations() {
@@ -972,6 +1032,12 @@ function bindEvents() {
   });
 
   document.addEventListener("click", (event) => {
+    const evolutionButton = event.target.closest("[data-focus-pokemon]");
+    if (evolutionButton) {
+      focusDexPokemon(evolutionButton.dataset.focusPokemon);
+      return;
+    }
+
     const caughtButton = event.target.closest("[data-toggle-caught]");
     if (caughtButton) {
       const constant = caughtButton.dataset.toggleCaught;
@@ -979,16 +1045,6 @@ function bindEvents() {
       else state.caught.add(constant);
       saveCaught();
       renderAll();
-    }
-
-    const teamButton = event.target.closest("[data-add-team]");
-    if (teamButton) {
-      const emptyIndex = state.team.findIndex((slot) => !slot.species);
-      const index = emptyIndex === -1 ? 0 : emptyIndex;
-      state.team[index] = createTeamSlot(teamButton.dataset.addTeam);
-      saveTeam();
-      switchView("team");
-      renderTeam();
     }
   });
 

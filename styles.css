@@ -396,6 +396,13 @@ select {
   box-shadow: 0 18px 40px rgba(48, 38, 88, 0.14);
 }
 
+.pokemon-card.is-focused {
+  border-color: var(--accent-2);
+  box-shadow:
+    0 0 0 3px rgba(196, 35, 42, 0.18),
+    0 18px 40px rgba(48, 38, 88, 0.16);
+}
+
 .pokemon-card.is-caught {
   border-color: rgba(66, 167, 127, 0.55);
   background:
@@ -716,10 +723,39 @@ select {
   font-size: 0.88rem;
 }
 
-.pokemon-actions {
-  display: flex;
+.evolution-links {
+  display: grid;
   gap: 8px;
-  margin-top: 0;
+  padding-top: 2px;
+}
+
+.evolution-link-group {
+  display: grid;
+  gap: 6px;
+}
+
+.evolution-button-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 6px;
+}
+
+.evolution-button {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  text-align: left;
+}
+
+.evolution-button strong {
+  overflow-wrap: anywhere;
+}
+
+.evolution-button small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .mini-button {
