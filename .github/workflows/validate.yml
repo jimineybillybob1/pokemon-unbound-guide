@@ -1,0 +1,28 @@
+name: Validate guide data
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate generated data
+        run: python scripts/validate_data.py
+
+      - name: Check generated JSON syntax
+        run: python -m json.tool data/unbound-data.json > /dev/null

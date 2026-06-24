@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A local static field guide, tracker, and team builder for Pokemon Unbound."
+    />
+    <meta name="theme-color" content="#142033" />
+    <title>Pokemon Unbound Field Guide</title>
+    <script>
+      document.documentElement.dataset.theme =
+        localStorage.getItem("unbound-field-guide-theme-v1") ||
+        (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    </script>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="data/unbound-data.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="#dex" data-open-view="dex" aria-label="Pokemon Unbound Field Guide">
+        <img src="assets/unbound-mark.png" alt="" width="56" height="56" />
+        <span>
+          <strong>Pokemon Unbound</strong>
+          <small>Field Guide</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <button class="icon-button" id="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z" /></svg>
+        </button>
+        <button class="text-button" id="reset-progress" type="button">Reset</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="overview" aria-label="Guide overview">
+        <article>
+          <span>Pokemon</span>
+          <strong id="count-pokemon">0</strong>
+        </article>
+        <article>
+          <span>Caught</span>
+          <strong><span id="count-caught">0</span> / <span id="count-caught-total">0</span></strong>
+        </article>
+        <article>
+          <span>Locations</span>
+          <strong id="count-locations">0</strong>
+        </article>
+        <article>
+          <span>Moves</span>
+          <strong id="count-moves">0</strong>
+        </article>
+      </section>
+
+      <nav class="view-tabs" aria-label="Guide sections">
+        <button class="view-tab is-active" type="button" data-view="dex">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 9h16M8 13h4M8 16h8" /></svg>
+          <span>Full Dex</span>
+        </button>
+        <button class="view-tab" type="button" data-view="locations">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21s6-6.2 6-12A6 6 0 0 0 6 9c0 5.8 6 12 6 12Z" /><circle cx="12" cy="9" r="2" /></svg>
+          <span>Locations</span>
+        </button>
+        <button class="view-tab" type="button" data-view="caught">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h6M15 12h6" /><circle cx="12" cy="12" r="3" /></svg>
+          <span>Caught</span>
+        </button>
+        <button class="view-tab" type="button" data-view="moves">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 4 14 16M19 4 5 20" /></svg>
+          <span>Moves</span>
+        </button>
+        <button class="view-tab" type="button" data-view="items">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7h10l3 5v8H4v-8l3-5ZM9 7V4h6v3M4 12h16" /></svg>
+          <span>Items</span>
+        </button>
+        <button class="view-tab" type="button" data-view="stones">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 2 8 6-3 11H7L4 8l8-6ZM4 8h16M12 2v6" /></svg>
+          <span>Mega / Z</span>
+        </button>
+        <button class="view-tab" type="button" data-view="team">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3" /><circle cx="5" cy="10" r="2" /><circle cx="19" cy="10" r="2" /><path d="M7 20v-2a5 5 0 0 1 10 0v2M1.5 20v-1.5A3.5 3.5 0 0 1 5 15M22.5 20v-1.5A3.5 3.5 0 0 0 19 15" /></svg>
+          <span>Team Builder</span>
+        </button>
+      </nav>
+
+      <section class="guide-view is-active" id="view-dex" data-view-panel="dex">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Source dex</p>
+            <h1>Full Dex</h1>
+          </div>
+          <p id="dex-result-count">Showing Pokemon</p>
+        </div>
+        <div class="toolbar">
+          <label>
+            <span>Search</span>
+            <input id="dex-search" type="search" placeholder="Name, type, ability, item, location" />
+          </label>
+          <label>
+            <span>Type</span>
+            <select id="type-filter"></select>
+          </label>
+          <label>
+            <span>Location</span>
+            <select id="location-filter"></select>
+          </label>
+          <label class="checkbox-field">
+            <input id="hide-placeholders" type="checkbox" checked />
+            <span>Hide placeholders</span>
+          </label>
+        </div>
+        <div class="card-grid pokemon-grid" id="dex-grid"></div>
+        <button class="load-more" id="dex-load-more" type="button">Load more</button>
+      </section>
+
+      <section class="guide-view" id="view-locations" data-view-panel="locations">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Encounter atlas</p>
+            <h1>Locations</h1>
+          </div>
+          <p id="location-result-count">Showing locations</p>
+        </div>
+        <div class="toolbar">
+          <label>
+            <span>Search</span>
+            <input id="location-search" type="search" placeholder="Location, Pokemon, method" />
+          </label>
+          <label>
+            <span>Method</span>
+            <select id="method-filter"></select>
+          </label>
+        </div>
+        <div class="location-grid" id="location-grid"></div>
+        <section class="data-section">
+          <h2>Gift, Static, Legendary, Trades, Swarms</h2>
+          <div class="split-grid">
+            <div id="special-encounters"></div>
+            <div id="trade-swarm-summary"></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="guide-view" id="view-caught" data-view-panel="caught">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Local tracker</p>
+            <h1>Caught Tracker</h1>
+          </div>
+          <p id="caught-summary">0 caught</p>
+        </div>
+        <div class="progress-bar"><span id="caught-progress"></span></div>
+        <div class="toolbar">
+          <label>
+            <span>Search</span>
+            <input id="caught-search" type="search" placeholder="Filter tracker" />
+          </label>
+          <button class="text-button" id="mark-visible-caught" type="button">Mark Visible</button>
+          <button class="text-button" id="clear-visible-caught" type="button">Clear Visible</button>
+        </div>
+        <div class="caught-list" id="caught-list"></div>
+      </section>
+
+      <section class="guide-view" id="view-moves" data-view-panel="moves">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Learnsets</p>
+            <h1>Moves</h1>
+          </div>
+          <p id="move-result-count">Showing moves</p>
+        </div>
+        <div class="toolbar">
+          <label>
+            <span>Search</span>
+            <input id="move-search" type="search" placeholder="Move or learner" />
+          </label>
+          <label>
+            <span>Source</span>
+            <select id="move-source-filter">
+              <option value="all">All sources</option>
+              <option value="levelUp">Level-up</option>
+              <option value="egg">Egg moves</option>
+              <option value="tutor">Frontier tutors</option>
+            </select>
+          </label>
+        </div>
+        <div class="move-layout">
+          <div class="move-list" id="move-list"></div>
+          <aside class="side-panel">
+            <h2>Battle Frontier Tutors</h2>
+            <div id="move-tutors"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="guide-view" id="view-items" data-view-panel="items">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Field items</p>
+            <h1>Items</h1>
+          </div>
+          <p id="item-result-count">Showing item data</p>
+        </div>
+        <div class="toolbar">
+          <label>
+            <span>Search</span>
+            <input id="item-search" type="search" placeholder="Item, move, Pokemon, location" />
+          </label>
+          <label>
+            <span>Table</span>
+            <select id="item-table-filter">
+              <option value="tmHm">TM/HM</option>
+              <option value="wildHeldItems">Wild held items</option>
+              <option value="frontierServices">Frontier services</option>
+            </select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table id="item-table"></table>
+        </div>
+      </section>
+
+      <section class="guide-view" id="view-stones" data-view-panel="stones">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Power items</p>
+            <h1>Mega Stones / Z-Crystals</h1>
+          </div>
+          <p id="stone-result-count">Showing stones</p>
+        </div>
+        <div class="toolbar">
+          <label>
+            <span>Search</span>
+            <input id="stone-search" type="search" placeholder="Stone, crystal, location" />
+          </label>
+        </div>
+        <div class="split-grid">
+          <section>
+            <h2>Mega Stones</h2>
+            <div class="item-card-grid" id="mega-grid"></div>
+          </section>
+          <section>
+            <h2>Z-Crystals</h2>
+            <div class="item-card-grid" id="z-grid"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="guide-view" id="view-team" data-view-panel="team">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Local party</p>
+            <h1>Team Builder</h1>
+          </div>
+          <button class="text-button" id="clear-team" type="button">Clear Team</button>
+        </div>
+        <div class="team-summary" id="team-summary"></div>
+        <div class="team-grid" id="team-grid"></div>
+      </section>
+    </main>
+  </body>
+</html>
