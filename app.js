@@ -914,10 +914,10 @@ function renderLocationCard(location) {
         detailCell.append(document.createTextNode(text));
         if (title === "Item locations" && row.imageLink) {
           detailCell.append(document.createTextNode(" "));
-          const imageLink = createElement("a", "location-image-link", "View image");
-          imageLink.href = row.imageLink;
-          imageLink.target = "_blank";
-          imageLink.rel = "noopener noreferrer";
+          const imageLink = createElement("button", "location-image-link", "View image");
+          imageLink.type = "button";
+          imageLink.dataset.openLocationImage = row.imageLink;
+          imageLink.dataset.locationImageLabel = row.columns[0] || "Item location";
           detailCell.append(imageLink);
         }
         tr.append(detailCell);
@@ -1132,6 +1132,22 @@ function openMovePopup(title, context, entries, emptyText) {
   elements.movePopupTitle.textContent = title;
   elements.movePopupContext.textContent = context;
   elements.movePopupBody.replaceChildren(renderMovePopupEntries(entries, emptyText));
+  if (typeof elements.movePopup.showModal === "function") elements.movePopup.showModal();
+  else elements.movePopup.setAttribute("open", "open");
+}
+
+function openLocationImagePopup(imageUrl, label) {
+  if (!imageUrl) return;
+  elements.movePopupTitle.textContent = "Location image";
+  elements.movePopupContext.textContent = label || "Location item reference";
+  const wrapper = createElement("div", "location-image-popup");
+  const link = createElement("a", "location-image-popup__link");
+  link.href = imageUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.append(imageNode(imageUrl, label || "Location image", 1200, 720));
+  wrapper.append(link);
+  elements.movePopupBody.replaceChildren(wrapper);
   if (typeof elements.movePopup.showModal === "function") elements.movePopup.showModal();
   else elements.movePopup.setAttribute("open", "open");
 }
@@ -2565,6 +2581,15 @@ function bindEvents() {
     const popupButton = event.target.closest("[data-open-move-popup]");
     if (popupButton) {
       openPokemonMovePopup(popupButton.dataset.openMovePopup, popupButton.dataset.moveGroup);
+      return;
+    }
+
+    const locationImageButton = event.target.closest("[data-open-location-image]");
+    if (locationImageButton) {
+      openLocationImagePopup(
+        locationImageButton.dataset.openLocationImage,
+        locationImageButton.dataset.locationImageLabel || "Item location",
+      );
       return;
     }
 

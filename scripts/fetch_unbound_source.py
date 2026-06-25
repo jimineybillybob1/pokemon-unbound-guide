@@ -223,7 +223,11 @@ def parse_html_table_rows(section_html: str, section_key: str) -> list[dict[str,
                 continue
             if len(columns) == 1:
                 heading_value = columns[0].lower()
-                if "points of interest" in heading_value or "exits from" in heading_value:
+                if (
+                    "points of interest" in heading_value
+                    or "exits from" in heading_value
+                    or heading_value in {"exits", "exit"}
+                ):
                     continue
 
             first_text = str(cells[0].get("text", ""))

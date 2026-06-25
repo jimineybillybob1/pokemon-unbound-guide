@@ -1688,6 +1688,8 @@ select {
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .location-reference-table th {
@@ -1696,8 +1698,30 @@ select {
 }
 
 .location-image-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
   font-weight: 700;
   text-decoration: underline;
+}
+
+.location-image-popup {
+  display: grid;
+  gap: 10px;
+}
+
+.location-image-popup__link {
+  display: block;
+}
+
+.location-image-popup__link img {
+  width: 100%;
+  height: auto;
+  max-height: min(70vh, 820px);
+  object-fit: contain;
+  border-radius: 12px;
 }
 
 .method-block {
