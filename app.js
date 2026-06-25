@@ -896,6 +896,28 @@ function renderLocationCard(location) {
     const section = createElement("section", "location-meta-section");
     section.append(createElement("h3", "", title));
     if (rowData.length) {
+      if (title === "Item locations") {
+        const list = createElement("div", "location-item-list");
+        rowData.slice(0, 40).forEach((row) => {
+          const item = createElement("article", "location-item-entry");
+          const itemName = row.columns[0] || "Item";
+          const description = row.columns.slice(1).join(" • ");
+          item.append(createElement("strong", "location-item-name", itemName));
+          if (description) item.append(createElement("div", "location-item-detail", description));
+          if (row.imageLink) {
+            const actions = createElement("div", "location-item-actions");
+            const imageLink = createElement("button", "location-image-link", "View image");
+            imageLink.type = "button";
+            imageLink.dataset.openLocationImage = row.imageLink;
+            imageLink.dataset.locationImageLabel = itemName;
+            actions.append(imageLink);
+            item.append(actions);
+          }
+          list.append(item);
+        });
+        section.append(list);
+        return section;
+      }
       const table = createElement("table", "location-reference-table");
       const body = document.createElement("tbody");
       const hasRef = rowData.some((row) => String(row.ref || "").trim().length || row.markerIcon);
@@ -913,22 +935,8 @@ function renderLocationCard(location) {
           tr.append(refCell);
         }
         const detailCell = document.createElement("td");
-        if (title === "Item locations" && row.imageLink) {
-          const itemName = row.columns[0] || "Item";
-          const description = row.columns.slice(1).join(" • ");
-          detailCell.append(createElement("strong", "location-item-name", itemName));
-          if (description) detailCell.append(createElement("div", "location-item-detail", description));
-          const actions = createElement("div", "location-item-actions");
-          const imageLink = createElement("button", "location-image-link", "View image");
-          imageLink.type = "button";
-          imageLink.dataset.openLocationImage = row.imageLink;
-          imageLink.dataset.locationImageLabel = itemName;
-          actions.append(imageLink);
-          detailCell.append(actions);
-        } else {
-          const text = row.columns.join(" • ");
-          detailCell.append(document.createTextNode(text));
-        }
+        const text = row.columns.join(" • ");
+        detailCell.append(document.createTextNode(text));
         tr.append(detailCell);
         body.append(tr);
       });
