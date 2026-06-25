@@ -24,6 +24,7 @@ GITHUB_API_ROOT = "https://api.github.com/repos/Skeli789/Dynamic-Pokemon-Expansi
 # Repository sources
 CFRU_REPO = "https://raw.githubusercontent.com/Skeli789/Complete-Fire-Red-Upgrade/master"
 DPE_UNBOUND_REPO = "https://raw.githubusercontent.com/Skeli789/Dynamic-Pokemon-Expansion/Unbound"
+VANILLA_FIRERED_REPO = "https://raw.githubusercontent.com/ProfLeonDias/pokefirered/decapitalization"
 
 # File paths within repos
 FILES = {
@@ -38,6 +39,7 @@ FILES = {
     "moves": f"{CFRU_REPO}/src/Tables/battle_moves.c",
     "move_descriptions": f"{CFRU_REPO}/strings/attack_descriptions.string",
     "move_names": f"{CFRU_REPO}/strings/attack_name_table.string",
+    "vanilla_move_descriptions": f"{VANILLA_FIRERED_REPO}/src/move_descriptions.c",
     "ability_names": f"{CFRU_REPO}/strings/ability_name_table.string",
     "ability_descriptions": f"{CFRU_REPO}/strings/ability_descriptions.string",
 }

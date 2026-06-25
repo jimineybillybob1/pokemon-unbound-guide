@@ -84,6 +84,10 @@ const elements = {
   methodFilter: document.querySelector("#method-filter"),
   locationGrid: document.querySelector("#location-grid"),
   locationResultCount: document.querySelector("#location-result-count"),
+  locationNav: document.querySelector("#location-nav"),
+  locationPrevious: document.querySelector("#location-prev"),
+  locationNext: document.querySelector("#location-next"),
+  locationPosition: document.querySelector("#location-position"),
   specialEncounters: document.querySelector("#special-encounters"),
   tradeSwarmSummary: document.querySelector("#trade-swarm-summary"),
   caughtSummary: document.querySelector("#caught-summary"),
@@ -105,6 +109,10 @@ const elements = {
   megaGrid: document.querySelector("#mega-grid"),
   zGrid: document.querySelector("#z-grid"),
   stoneResultCount: document.querySelector("#stone-result-count"),
+  expandStones: document.querySelector("#expand-stones"),
+  collapseStones: document.querySelector("#collapse-stones"),
+  megaPanel: document.querySelector("#mega-panel"),
+  zPanel: document.querySelector("#z-panel"),
   teamSummary: document.querySelector("#team-summary"),
   teamGrid: document.querySelector("#team-grid"),
   teamPokemonOptions: document.querySelector("#team-pokemon-options"),
@@ -114,9 +122,14 @@ const elements = {
   movePopupBody: document.querySelector("#move-popup-body"),
 };
 
+const INITIAL_CARD_BATCH = 50;
+
 const state = {
   view: "dex",
-  dexLimit: 96,
+  dexLimit: INITIAL_CARD_BATCH,
+  caughtLimit: INITIAL_CARD_BATCH,
+  moveLimit: INITIAL_CARD_BATCH,
+  locationIndex: 0,
   caught: new Set(readJson(storageKeys.caught, [])),
   team: normalizeTeam(readJson(storageKeys.team, [])),
   caughtFilter: "all",
@@ -438,7 +451,7 @@ function renderPokemonCard(entry) {
 }
 
 function renderDex(resetLimit = false) {
-  if (resetLimit) state.dexLimit = 96;
+  if (resetLimit) state.dexLimit = INITIAL_CARD_BATCH;
   const list = filteredPokemon({
     includePlaceholders: !elements.hidePlaceholders.checked,
     search: elements.dexSearch.value,
@@ -450,6 +463,7 @@ function renderDex(resetLimit = false) {
   elements.dexGrid.replaceChildren(fragment);
   elements.dexResultCount.textContent = `Showing ${Math.min(list.length, state.dexLimit)} of ${list.length}`;
   elements.dexLoadMore.hidden = state.dexLimit >= list.length;
+  scheduleAutoLoad("dex");
 }
 
 function focusDexPokemon(constant) {
@@ -478,7 +492,10 @@ function filteredLocations() {
     })
     .filter((location) => {
       if (!location.methods.length) return false;
-      const text = [location.name, ...location.methods.flatMap((methodItem) => [methodItem.label, ...methodItem.species])]
+      const text = [
+        location.name,
+        ...location.methods.flatMap((methodItem) => [methodItem.label, ...locationMethodEntries(methodItem).map((entry) => entry.species)]),
+      ]
         .join(" ")
         .toLowerCase();
       return !query || text.includes(query);
@@ -489,14 +506,20 @@ function locationPokemonEntry(name) {
   return pokemonBySearchName.get(normalize(name));
 }
 
-function renderLocationPokemonRow(name) {
+function locationMethodEntries(method) {
+  if (Array.isArray(method.encounters) && method.encounters.length) return method.encounters;
+  return (method.species || []).map((species) => ({ species }));
+}
+
+function renderLocationPokemonRow(encounter) {
+  const name = encounter.species;
   const entry = locationPokemonEntry(name);
   const row = createElement("div", `location-pokemon-row${entry && isCaught(entry.constant) ? " is-caught" : ""}`);
   const identity = createElement("button", "location-pokemon-row__identity location-pokemon-row__toggle");
   identity.type = "button";
   if (entry) identity.dataset.toggleCaught = entry.constant;
-  if (entry) identity.append(spriteWell(entry, "location-pokemon-row__sprite", 40));
-  else identity.append(spriteWell(null, "location-pokemon-row__sprite", 40));
+  if (entry) identity.append(spriteWell(entry, "location-pokemon-row__sprite", 72));
+  else identity.append(spriteWell(null, "location-pokemon-row__sprite", 72));
   const copy = createElement("span", "location-pokemon-row__copy");
   copy.append(createElement("strong", "", name));
   if (entry?.types?.length) copy.append(renderTypeRow(entry.types));
@@ -504,7 +527,7 @@ function renderLocationPokemonRow(name) {
   row.append(identity);
 
   const meta = createElement("span", "location-pokemon-row__meta");
-  meta.append(pill(`Catch ${entry?.catchRate ?? "-"}`));
+  if (encounter.rate) meta.append(pill(`Encounter ${encounter.rate}%`));
   if (entry) meta.append(caughtToggleButton(entry.constant, true));
   row.append(meta);
   return row;
@@ -517,9 +540,10 @@ function renderLocationCard(location) {
   card.append(header);
   for (const method of location.methods) {
     const block = createElement("section", "method-block");
-    block.append(createElement("h3", "", `${method.label} (${method.species.length})`));
+    const encounters = locationMethodEntries(method);
+    block.append(createElement("h3", "", `${method.label} (${encounters.length})`));
     const list = createElement("div", "location-pokemon-list");
-    method.species.forEach((name) => list.append(renderLocationPokemonRow(name)));
+    encounters.forEach((encounter) => list.append(renderLocationPokemonRow(encounter)));
     block.append(list);
     card.append(block);
   }
@@ -528,10 +552,19 @@ function renderLocationCard(location) {
 
 function renderLocations() {
   const list = filteredLocations();
-  const fragment = document.createDocumentFragment();
-  list.forEach((location) => fragment.append(renderLocationCard(location)));
-  elements.locationGrid.replaceChildren(fragment);
+  state.locationIndex = Math.max(0, Math.min(state.locationIndex, list.length - 1));
+  elements.locationNav.hidden = !list.length;
+  elements.locationPrevious.disabled = state.locationIndex <= 0;
+  elements.locationNext.disabled = state.locationIndex >= list.length - 1;
   elements.locationResultCount.textContent = `Showing ${list.length} locations`;
+  elements.locationPosition.textContent = list.length
+    ? `Location ${state.locationIndex + 1} of ${list.length}`
+    : "Location 0 of 0";
+  if (!list.length) {
+    elements.locationGrid.replaceChildren(emptyState("No locations matched the current filters."));
+    return;
+  }
+  elements.locationGrid.replaceChildren(renderLocationCard(list[state.locationIndex]));
 }
 
 function renderSpecialSections() {
@@ -614,19 +647,22 @@ function renderCaught() {
   elements.caughtProgress.style.width = `${percent}%`;
 
   const fragment = document.createDocumentFragment();
-  list.forEach((entry) => {
+  list.slice(0, state.caughtLimit).forEach((entry) => {
     const row = createElement("div", `caught-row${isCaught(entry.constant) ? " is-caught" : ""}`);
     const identity = createElement("button", "caught-row__identity caught-row__toggle");
     identity.type = "button";
     identity.dataset.toggleCaught = entry.constant;
     identity.append(spriteWell(entry, "caught-row__sprite", 38));
     const copy = createElement("span", "caught-row__copy");
-    copy.append(createElement("small", "", `#${entry.guideNumber}`), createElement("strong", "", entry.name));
+    copy.append(createElement("small", "", `#${entry.guideNumber}`), createElement("strong", "", entry.name), renderTypeRow(entry.types));
     identity.append(copy);
     row.append(identity, caughtToggleButton(entry.constant, true));
     fragment.append(row);
   });
+  if (!fragment.childNodes.length) fragment.append(emptyState("No Pokemon matched the current tracker filters."));
   elements.caughtList.replaceChildren(fragment);
+  elements.caughtSummary.textContent = `${currentCaughtCount} of ${pokemon.length} caught | Showing ${Math.min(list.length, state.caughtLimit)} of ${list.length}`;
+  scheduleAutoLoad("caught");
 }
 
 function learnerText(learner) {
@@ -750,6 +786,7 @@ function renderMoveCard(move) {
   if (moveTutorNames.has(normalize(move.name))) counts.append(pill("Tutor"));
   summary.append(title, counts);
   details.append(summary);
+  details.append(moveDetailsNode(move.name));
 
   const groups = createElement("div", "learner-groups");
   if (move.learners.levelUp.length) groups.append(renderLearners("Level-up learners", move.learners.levelUp));
@@ -761,10 +798,11 @@ function renderMoveCard(move) {
 function renderMoves() {
   const list = filteredMoves();
   const fragment = document.createDocumentFragment();
-  list.slice(0, 180).forEach((move) => fragment.append(renderMoveCard(move)));
+  list.slice(0, state.moveLimit).forEach((move) => fragment.append(renderMoveCard(move)));
   if (!fragment.childNodes.length) fragment.append(emptyState("No moves matched the current filters."));
   elements.moveList.replaceChildren(fragment);
-  elements.moveResultCount.textContent = `Showing ${Math.min(list.length, 180)} of ${list.length}`;
+  elements.moveResultCount.textContent = `Showing ${Math.min(list.length, state.moveLimit)} of ${list.length}`;
+  scheduleAutoLoad("moves");
 }
 
 function renderMoveTutors() {
@@ -867,6 +905,54 @@ function renderStones() {
   elements.megaGrid.replaceChildren(megaFragment);
   elements.zGrid.replaceChildren(zFragment);
   elements.stoneResultCount.textContent = `Showing ${mega.length + z.length} items`;
+}
+
+function canAutoLoad(view) {
+  if (view === "dex") {
+    const total = filteredPokemon({
+      includePlaceholders: !elements.hidePlaceholders.checked,
+      search: elements.dexSearch.value,
+      type: elements.typeFilter.value,
+      location: elements.locationFilter.value,
+    }).length;
+    return state.dexLimit < total;
+  }
+  if (view === "caught") {
+    return state.caughtLimit < caughtFilteredPokemon().length;
+  }
+  if (view === "moves") {
+    return state.moveLimit < filteredMoves().length;
+  }
+  return false;
+}
+
+function loadNextBatch(view) {
+  if (view === "dex" && canAutoLoad("dex")) {
+    state.dexLimit += INITIAL_CARD_BATCH;
+    renderDex();
+    return true;
+  }
+  if (view === "caught" && canAutoLoad("caught")) {
+    state.caughtLimit += INITIAL_CARD_BATCH;
+    renderCaught();
+    return true;
+  }
+  if (view === "moves" && canAutoLoad("moves")) {
+    state.moveLimit += INITIAL_CARD_BATCH;
+    renderMoves();
+    return true;
+  }
+  return false;
+}
+
+function scheduleAutoLoad(view) {
+  if (state.view !== view) return;
+  window.requestAnimationFrame(() => {
+    if (state.view !== view) return;
+    if (document.documentElement.scrollHeight <= window.innerHeight + 140) {
+      loadNextBatch(view);
+    }
+  });
 }
 
 function renderItemCard(item) {
@@ -1085,6 +1171,7 @@ function switchView(view) {
     else tab.removeAttribute("aria-current");
   });
   history.replaceState(null, "", `#${view}`);
+  scheduleAutoLoad(view);
 }
 
 function populateFilters() {
@@ -1142,22 +1229,54 @@ function bindEvents() {
   elements.locationFilter.addEventListener("change", () => renderDex(true));
   elements.hidePlaceholders.addEventListener("change", () => renderDex(true));
   elements.dexLoadMore.addEventListener("click", () => {
-    state.dexLimit += 96;
+    state.dexLimit += INITIAL_CARD_BATCH;
     renderDex();
   });
 
-  elements.locationSearch.addEventListener("input", renderLocations);
-  elements.methodFilter.addEventListener("change", renderLocations);
-  elements.caughtSearch.addEventListener("input", renderCaught);
-  elements.caughtFilter.addEventListener("change", () => {
-    state.caughtFilter = elements.caughtFilter.value;
+  elements.locationSearch.addEventListener("input", () => {
+    state.locationIndex = 0;
+    renderLocations();
+  });
+  elements.methodFilter.addEventListener("change", () => {
+    state.locationIndex = 0;
+    renderLocations();
+  });
+  elements.locationPrevious.addEventListener("click", () => {
+    state.locationIndex = Math.max(0, state.locationIndex - 1);
+    renderLocations();
+  });
+  elements.locationNext.addEventListener("click", () => {
+    state.locationIndex += 1;
+    renderLocations();
+  });
+  elements.caughtSearch.addEventListener("input", () => {
+    state.caughtLimit = INITIAL_CARD_BATCH;
     renderCaught();
   });
-  elements.moveSearch.addEventListener("input", renderMoves);
-  elements.moveSourceFilter.addEventListener("change", renderMoves);
+  elements.caughtFilter.addEventListener("change", () => {
+    state.caughtFilter = elements.caughtFilter.value;
+    state.caughtLimit = INITIAL_CARD_BATCH;
+    renderCaught();
+  });
+  elements.moveSearch.addEventListener("input", () => {
+    state.moveLimit = INITIAL_CARD_BATCH;
+    renderMoves();
+  });
+  elements.moveSourceFilter.addEventListener("change", () => {
+    state.moveLimit = INITIAL_CARD_BATCH;
+    renderMoves();
+  });
   elements.itemSearch.addEventListener("input", renderItemTable);
   elements.itemTableFilter.addEventListener("change", renderItemTable);
   elements.stoneSearch.addEventListener("input", renderStones);
+  elements.expandStones.addEventListener("click", () => {
+    elements.megaPanel.open = true;
+    elements.zPanel.open = true;
+  });
+  elements.collapseStones.addEventListener("click", () => {
+    elements.megaPanel.open = false;
+    elements.zPanel.open = false;
+  });
 
   document.querySelector("#theme-toggle").addEventListener("click", () => {
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
@@ -1268,6 +1387,11 @@ function bindEvents() {
       state.team[Number(nicknameInput.dataset.teamNickname)].nickname = nicknameInput.value;
       saveTeam();
     }
+  });
+
+  window.addEventListener("scroll", () => {
+    if (window.innerHeight + window.scrollY < document.documentElement.scrollHeight - 360) return;
+    loadNextBatch(state.view);
   });
 }
 

@@ -21,6 +21,7 @@ UNBOUND_POKEDEX_WILD_SOURCE = "Unbound-Pokedex encounters.json"
 FETCHED_MOVES_FILE = FETCHED_REPO_DIR / "moves.txt"
 FETCHED_MOVE_NAMES_FILE = FETCHED_REPO_DIR / "move_names.txt"
 FETCHED_MOVE_DESCRIPTIONS_FILE = FETCHED_REPO_DIR / "move_descriptions.txt"
+FETCHED_VANILLA_MOVE_DESCRIPTIONS_FILE = FETCHED_REPO_DIR / "vanilla_move_descriptions.txt"
 FETCHED_ABILITIES_FILE = FETCHED_REPO_DIR / "abilities.txt"
 FETCHED_ABILITY_NAMES_FILE = FETCHED_REPO_DIR / "ability_names.txt"
 FETCHED_ABILITY_DESCRIPTIONS_FILE = FETCHED_REPO_DIR / "ability_descriptions.txt"
@@ -43,12 +44,24 @@ METHOD_MARKERS = {
     "Rock Smash",
 }
 UNBOUND_POKEDEX_METHOD_LABELS = {
-    "grassAnytime": "Grass",
-    "grassDay": "Grass (Day)",
-    "grassNight": "Grass (Night)",
+    "grassAnytime": "Land",
+    "grassDay": "Day",
+    "grassNight": "Night",
     "water": "Surfing",
     "fishing": "Fishing",
     "rockSmash": "Rock Smash",
+}
+FISHING_METHOD_BY_SLOT = {
+    0: "Old Rod",
+    1: "Old Rod",
+    2: "Good Rod",
+    3: "Good Rod",
+    4: "Good Rod",
+    5: "Super Rod",
+    6: "Super Rod",
+    7: "Super Rod",
+    8: "Super Rod",
+    9: "Super Rod",
 }
 MOVE_CATEGORY_LABELS = {
     "SPLIT_PHYSICAL": "Physical",
@@ -270,6 +283,22 @@ def parse_org_entries(text: str, prefix: str) -> dict[str, str]:
     return entries
 
 
+def parse_vanilla_move_descriptions(text: str) -> dict[str, str]:
+    descriptions_by_label: dict[str, str] = {}
+    for match in re.finditer(r'const u8 (gMoveDescription_\w+)\[\]\s*=\s*_\("(.*?)"\);', text, re.DOTALL):
+        descriptions_by_label[match.group(1)] = parse_source_string(match.group(2))
+
+    move_descriptions: dict[str, str] = {}
+    for line in text.splitlines():
+        match = re.search(r"\[\s*(MOVE_\w+)[^\]]*\]\s*=\s*(gMoveDescription_\w+)", line)
+        if not match:
+            continue
+        description = descriptions_by_label.get(match.group(2), "")
+        if description:
+            move_descriptions[normalize_key(match.group(1).removeprefix("MOVE_"))] = description
+    return move_descriptions
+
+
 def load_reference_metadata() -> dict:
     metadata = {
         "moves": {},
@@ -282,19 +311,31 @@ def load_reference_metadata() -> dict:
     moves_text = read_optional_text(FETCHED_MOVES_FILE)
     move_names_text = read_optional_text(FETCHED_MOVE_NAMES_FILE)
     move_descriptions_text = read_optional_text(FETCHED_MOVE_DESCRIPTIONS_FILE)
+    vanilla_move_descriptions_text = read_optional_text(FETCHED_VANILLA_MOVE_DESCRIPTIONS_FILE)
     if moves_text and move_names_text and move_descriptions_text:
         move_names = parse_org_entries(move_names_text, "NAME_")
         move_descriptions = parse_org_entries(move_descriptions_text, "DESC_")
+        vanilla_move_descriptions = (
+            parse_vanilla_move_descriptions(vanilla_move_descriptions_text) if vanilla_move_descriptions_text else {}
+        )
         field_re = re.compile(r"\.(\w+)\s*=\s*([^,\n]+),")
-        markers = list(re.finditer(r"\[MOVE_([A-Z0-9_]+)\]\s*=", moves_text))
+        table_start = moves_text.find("const struct BattleMove gBattleMoves[]")
+        table_body = moves_text[table_start:] if table_start >= 0 else moves_text
+        table_end = table_body.find("\n};")
+        if table_end >= 0:
+            table_body = table_body[:table_end]
+        markers = list(re.finditer(r"\[MOVE_([A-Z0-9_]+)\]\s*=", table_body))
         for index, match in enumerate(markers):
             move_id = match.group(1)
             if move_id == "NONE":
                 continue
             start = match.end()
-            end = markers[index + 1].start() if index + 1 < len(markers) else len(moves_text)
-            fields = {field: clean(value) for field, value in field_re.findall(moves_text[start:end])}
+            end = markers[index + 1].start() if index + 1 < len(markers) else len(table_body)
+            fields = {field: clean(value) for field, value in field_re.findall(table_body[start:end])}
             move_name = move_names.get(normalize_key(move_id)) or MOVE_NAME_OVERRIDES.get(move_id) or token_words(move_id)
+            priority = parse_int(fields.get("priority", ""))
+            if priority is not None and priority >= 50:
+                priority -= 256
             metadata["moveNames"][normalize_key(move_id)] = move_name
             metadata["moves"][normalize_key(move_name)] = {
                 "type": humanize_prefixed(fields.get("type", ""), "TYPE_"),
@@ -302,9 +343,10 @@ def load_reference_metadata() -> dict:
                 "power": parse_int(fields.get("power", "")),
                 "accuracy": parse_int(fields.get("accuracy", "")),
                 "pp": parse_int(fields.get("pp", "")),
-                "priority": parse_int(fields.get("priority", "")),
+                "priority": priority,
                 "contact": "FLAG_MAKES_CONTACT" in fields.get("flags", ""),
-                "description": move_descriptions.get(normalize_key(move_id), ""),
+                "description": move_descriptions.get(normalize_key(move_id), "")
+                or vanilla_move_descriptions.get(normalize_key(move_id), ""),
                 "effect": "",
                 "metadataSource": "Fetched CFRU move data",
             }
@@ -1199,7 +1241,57 @@ def parse_unbound_pokedex_wild_locations(pokemon: dict[str, dict]) -> list[dict]
         return []
 
     species_names = {constant: entry["name"] for constant, entry in pokemon.items()}
-    locations_by_name: dict[str, dict[str, list[str]]] = {}
+    locations_by_name: dict[str, dict[str, dict[str, dict[str, object]]]] = {}
+
+    def encounter_method_label(raw_method: str, slot_index: int) -> str:
+        if raw_method == "fishing":
+            return FISHING_METHOD_BY_SLOT.get(slot_index, "Fishing")
+        return UNBOUND_POKEDEX_METHOD_LABELS.get(raw_method, raw_method)
+
+    def encounter_rate(label: str, slot_index: int) -> int:
+        if label in {"Land", "Day", "Night"}:
+            if slot_index in {0, 1}:
+                return 20
+            if slot_index in {2, 3, 4, 5}:
+                return 10
+            if slot_index in {6, 7}:
+                return 5
+            if slot_index in {8, 9}:
+                return 4
+            if slot_index in {10, 11}:
+                return 1
+            return 100
+        if label in {"Surfing", "Rock Smash"}:
+            if slot_index == 0:
+                return 60
+            if slot_index == 1:
+                return 30
+            if slot_index == 2:
+                return 5
+            if slot_index == 3:
+                return 4
+            if slot_index == 4:
+                return 1
+            return 100
+        if label == "Old Rod":
+            return 70 if slot_index == 0 else 30 if slot_index == 1 else 100
+        if label == "Good Rod":
+            if slot_index == 2:
+                return 60
+            if slot_index in {3, 4}:
+                return 20
+            return 100
+        if label == "Super Rod":
+            if slot_index in {5, 6}:
+                return 40
+            if slot_index == 7:
+                return 15
+            if slot_index == 8:
+                return 4
+            if slot_index == 9:
+                return 1
+            return 100
+        return 100
 
     for entry in payload:
         if not isinstance(entry, dict):
@@ -1209,34 +1301,44 @@ def parse_unbound_pokedex_wild_locations(pokemon: dict[str, dict]) -> list[dict]
         if not map_name or not isinstance(encounters, dict):
             continue
         method_map = locations_by_name.setdefault(map_name, {})
-        for key, label in UNBOUND_POKEDEX_METHOD_LABELS.items():
+        for key in UNBOUND_POKEDEX_METHOD_LABELS:
             details = encounters.get(key)
             if not isinstance(details, dict):
                 continue
             slots = details.get("slots")
             if not isinstance(slots, list):
                 continue
-            species_list = method_map.setdefault(label, [])
-            for slot in slots:
+            for slot_index, slot in enumerate(slots):
                 if not isinstance(slot, dict):
                     continue
                 species_constant = clean(slot.get("species"))
                 if not species_constant:
                     continue
                 species_name = species_names.get(species_constant) or humanize_species(species_constant)
-                if species_name and species_name not in species_list:
-                    species_list.append(species_name)
+                label = encounter_method_label(key, slot_index)
+                method_entries = method_map.setdefault(label, {})
+                record = method_entries.setdefault(
+                    species_name,
+                    {
+                        "species": species_name,
+                        "rate": 0,
+                    },
+                )
+                record["rate"] = int(record["rate"]) + encounter_rate(label, slot_index)
 
     records = []
     for location_name in sorted(locations_by_name):
         methods = []
-        for label in UNBOUND_POKEDEX_METHOD_LABELS.values():
-            species_list = locations_by_name[location_name].get(label, [])
-            if species_list:
+        ordered_labels = ["Land", "Day", "Night", "Surfing", "Old Rod", "Good Rod", "Super Rod", "Rock Smash"]
+        for label in ordered_labels:
+            species_map = locations_by_name[location_name].get(label, {})
+            if species_map:
+                encounters_list = list(species_map.values())
                 methods.append(
                     {
                         "label": label,
-                        "species": species_list,
+                        "species": [item["species"] for item in encounters_list],
+                        "encounters": encounters_list,
                         "source": UNBOUND_POKEDEX_WILD_SOURCE,
                     }
                 )
@@ -1311,6 +1413,15 @@ def attach_tm_hm_compatibility(pokemon: dict[str, dict], move_metadata: dict[str
             constant = f"SPECIES_{species_name}"
             if constant in pokemon:
                 pokemon[constant]["tmHmMoves"].append(dict(move_entry))
+
+
+def enrich_tm_hm_items(tm_hm_rows: list[dict], move_metadata: dict[str, dict]) -> None:
+    for row in tm_hm_rows:
+        if clean(row.get("type")):
+            continue
+        metadata = move_metadata.get(normalize_key(row.get("name", "")), {})
+        if metadata.get("type"):
+            row["type"] = metadata["type"]
 
 
 def collect_move_data(
@@ -1460,6 +1571,7 @@ def build_data() -> dict:
     move_hints = {**location_move_hints, **frontier_move_hints}
 
     attach_source_data(pokemon, learnsets, egg_moves, evolutions)
+    enrich_tm_hm_items(location_data["tmHm"], reference_metadata["moves"])
     attach_tm_hm_compatibility(pokemon, reference_metadata["moves"])
     unmatched_location_species = attach_locations(pokemon, location_data)
     asset_counts = attach_asset_paths(pokemon, location_data)

@@ -797,7 +797,22 @@ select {
 }
 
 .location-grid {
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: minmax(0, 900px);
+  justify-content: center;
+}
+
+.location-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.location-nav p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .method-block {
@@ -826,9 +841,9 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 16px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 12px 14px;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--line);
@@ -864,17 +879,18 @@ select {
 
 .location-pokemon-row__copy strong {
   font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.08rem;
 }
 
 .location-pokemon-row__sprite {
-  width: 42px;
-  height: 42px;
+  width: 72px;
+  height: 72px;
   border-radius: 8px;
 }
 
 .location-pokemon-row__sprite img {
-  width: 34px;
-  height: 34px;
+  width: 60px;
+  height: 60px;
   object-fit: contain;
   image-rendering: pixelated;
 }
@@ -919,18 +935,17 @@ select {
 
 .caught-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .caught-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 56px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 92px;
   width: 100%;
-  padding: 6px 10px;
+  padding: 10px 12px;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--line);
@@ -944,14 +959,16 @@ select {
 }
 
 .caught-row__identity {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   min-width: 0;
 }
 
 .caught-row__copy {
   display: grid;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -967,6 +984,10 @@ select {
   font-size: 1rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.caught-row .caught-button {
+  justify-self: start;
 }
 
 .move-layout {
@@ -1051,6 +1072,17 @@ th {
 .item-card-grid {
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   margin-top: 10px;
+}
+
+.stone-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.toolbar-actions {
+  display: inline-flex;
+  align-items: end;
+  gap: 8px;
 }
 
 .collapsible-panel {
@@ -1364,6 +1396,10 @@ th {
   .team-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .caught-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -1391,6 +1427,16 @@ th {
 
   .team-grid {
     grid-template-columns: 1fr;
+  }
+
+  .caught-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .location-nav,
+  .location-pokemon-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .pokemon-card__identity,

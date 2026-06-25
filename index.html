@@ -138,6 +138,11 @@
             <select id="method-filter"></select>
           </label>
         </div>
+        <div class="location-nav" id="location-nav">
+          <button class="text-button" id="location-prev" type="button">Previous</button>
+          <p id="location-position">Location 0 of 0</p>
+          <button class="text-button" id="location-next" type="button">Next</button>
+        </div>
         <div class="location-grid" id="location-grid"></div>
         <section class="data-section">
           <h2>Gift, Static, Legendary, Trades, Swarms</h2>
@@ -250,13 +255,17 @@
             <span>Search</span>
             <input id="stone-search" type="search" placeholder="Stone, crystal, location" />
           </label>
+          <div class="toolbar-actions">
+            <button class="text-button" id="expand-stones" type="button">Expand all</button>
+            <button class="text-button" id="collapse-stones" type="button">Collapse all</button>
+          </div>
         </div>
-        <div class="split-grid">
-          <details class="collapsible-panel">
+        <div class="stone-stack">
+          <details class="collapsible-panel" id="mega-panel">
             <summary><h2>Mega Stones</h2></summary>
             <div class="item-card-grid" id="mega-grid"></div>
           </details>
-          <details class="collapsible-panel">
+          <details class="collapsible-panel" id="z-panel">
             <summary><h2>Z-Crystals</h2></summary>
             <div class="item-card-grid" id="z-grid"></div>
           </details>
