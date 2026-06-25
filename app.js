@@ -3,8 +3,19 @@ const guideData = window.UNBOUND_GUIDE_DATA;
 const storageKeys = {
   caught: "unbound-field-guide-caught-v1",
   team: "unbound-field-guide-team-v1",
+  badges: "unbound-field-guide-badges-v1",
   theme: "unbound-field-guide-theme-v1",
+  syncCode: "unbound-field-guide-sync-code-v1",
+  saveMetadata: "unbound-field-guide-save-metadata-v1",
+  syncContext: "unbound-field-guide-sync-context-v1",
+  localBackups: "unbound-field-guide-local-backups-v1",
 };
+
+const saveFormat = "unbound-field-guide-save";
+const saveVersion = 1;
+const syncEndpoint = (window.UNBOUND_SYNC_ENDPOINT || "").replace(/\/+$/, "");
+const maxLocalBackups = 5;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const statLabels = {
   hp: "HP",
@@ -66,13 +77,20 @@ const abilityMetadataByName = new Map((guideData.abilities || []).map((ability) 
 const moveTutorNames = new Set(
   guideData.frontier.moveTutors.flatMap((tutor) => tutor.moves.map((move) => normalize(move.move))),
 );
+const TOTAL_BADGES = 8;
 
 const elements = {
-  countPokemon: document.querySelector("#count-pokemon"),
+  overviewTeamCount: document.querySelector("#overview-team-count"),
+  overviewTeamList: document.querySelector("#overview-team-list"),
   countCaught: document.querySelector("#count-caught"),
   countCaughtTotal: document.querySelector("#count-caught-total"),
-  countLocations: document.querySelector("#count-locations"),
-  countMoves: document.querySelector("#count-moves"),
+  overviewCaughtProgress: document.querySelector("#overview-caught-progress"),
+  badgeCount: document.querySelector("#badge-count"),
+  badgeTotal: document.querySelector("#badge-total"),
+  overviewBadgeProgress: document.querySelector("#overview-badge-progress"),
+  badgeSlotList: document.querySelector("#badge-slot-list"),
+  badgeDecrease: document.querySelector("#badge-decrease"),
+  badgeIncrease: document.querySelector("#badge-increase"),
   dexSearch: document.querySelector("#dex-search"),
   typeFilter: document.querySelector("#type-filter"),
   locationFilter: document.querySelector("#location-filter"),
@@ -80,14 +98,11 @@ const elements = {
   dexGrid: document.querySelector("#dex-grid"),
   dexResultCount: document.querySelector("#dex-result-count"),
   dexLoadMore: document.querySelector("#dex-load-more"),
+  typeQuickFilters: document.querySelector("#type-quick-filters"),
   locationSearch: document.querySelector("#location-search"),
   methodFilter: document.querySelector("#method-filter"),
   locationGrid: document.querySelector("#location-grid"),
   locationResultCount: document.querySelector("#location-result-count"),
-  locationNav: document.querySelector("#location-nav"),
-  locationPrevious: document.querySelector("#location-prev"),
-  locationNext: document.querySelector("#location-next"),
-  locationPosition: document.querySelector("#location-position"),
   specialEncounters: document.querySelector("#special-encounters"),
   tradeSwarmSummary: document.querySelector("#trade-swarm-summary"),
   caughtSummary: document.querySelector("#caught-summary"),
@@ -116,10 +131,24 @@ const elements = {
   teamSummary: document.querySelector("#team-summary"),
   teamGrid: document.querySelector("#team-grid"),
   teamPokemonOptions: document.querySelector("#team-pokemon-options"),
+  saveCaughtCount: document.querySelector("#save-caught-count"),
+  saveTeamCount: document.querySelector("#save-team-count"),
+  saveLocalRevision: document.querySelector("#save-local-revision"),
+  saveLocalModified: document.querySelector("#save-local-modified"),
+  importSaveFile: document.querySelector("#import-save-file"),
+  syncCode: document.querySelector("#sync-code"),
+  syncServiceStatus: document.querySelector("#sync-service-status"),
+  syncFreshness: document.querySelector("#sync-freshness"),
+  syncFreshnessTitle: document.querySelector("#sync-freshness-title"),
+  syncFreshnessDetail: document.querySelector("#sync-freshness-detail"),
+  syncConflictActions: document.querySelector("#sync-conflict-actions"),
+  syncRecoveryList: document.querySelector("#sync-recovery-list"),
+  saveOperationStatus: document.querySelector("#save-operation-status"),
   movePopup: document.querySelector("#move-popup"),
   movePopupContext: document.querySelector("#move-popup-context"),
   movePopupTitle: document.querySelector("#move-popup-title"),
   movePopupBody: document.querySelector("#move-popup-body"),
+  backToTop: document.querySelector("#back-to-top"),
 };
 
 const INITIAL_CARD_BATCH = 50;
@@ -129,10 +158,16 @@ const state = {
   dexLimit: INITIAL_CARD_BATCH,
   caughtLimit: INITIAL_CARD_BATCH,
   moveLimit: INITIAL_CARD_BATCH,
-  locationIndex: 0,
   caught: new Set(readJson(storageKeys.caught, [])),
   team: normalizeTeam(readJson(storageKeys.team, [])),
+  badges: Math.max(0, Math.min(TOTAL_BADGES, Number(readJson(storageKeys.badges, 0)) || 0)),
   caughtFilter: "all",
+  syncCode: localStorage.getItem(storageKeys.syncCode) || "",
+  saveMetadata: loadSaveMetadata(),
+  syncContext: loadSyncContext(),
+  syncSnapshot: null,
+  syncStatus: "unchecked",
+  cloudHistory: [],
 };
 
 function readJson(key, fallback) {
@@ -145,6 +180,29 @@ function readJson(key, fallback) {
 
 function writeJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function loadSaveMetadata() {
+  const stored = readJson(storageKeys.saveMetadata, {});
+  return {
+    deviceId: uuidPattern.test(stored.deviceId || "") ? stored.deviceId : crypto.randomUUID(),
+    revision: Number.isInteger(stored.revision) && stored.revision >= 0 ? stored.revision : 0,
+    modifiedAt: typeof stored.modifiedAt === "string" ? stored.modifiedAt : null,
+  };
+}
+
+function loadSyncContext() {
+  const stored = readJson(storageKeys.syncContext, {});
+  return {
+    code: typeof stored.code === "string" ? stored.code : "",
+    lastSyncedRevision:
+      Number.isInteger(stored.lastSyncedRevision) && stored.lastSyncedRevision >= 0
+        ? stored.lastSyncedRevision
+        : null,
+    lastSyncedFingerprint:
+      typeof stored.lastSyncedFingerprint === "string" ? stored.lastSyncedFingerprint : "",
+    lastSyncedAt: typeof stored.lastSyncedAt === "string" ? stored.lastSyncedAt : null,
+  };
 }
 
 function normalize(value) {
@@ -172,16 +230,91 @@ function createTeamSlot(species = "", values = {}) {
   };
 }
 
+function cleanTeamNickname(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 24);
+}
+
+function validAbilityForSpecies(species, ability) {
+  const entry = pokemonByConstant.get(species);
+  if (!entry) return "";
+  const abilities = [...entry.abilities, entry.hiddenAbility].filter(Boolean);
+  return abilities.includes(ability) ? ability : abilities[0] || "";
+}
+
+function validMoveName(value) {
+  const match = moveMetadataByName.get(normalize(value));
+  return match?.name || "";
+}
+
+function validNatureName(value) {
+  return natureByName.has(value) ? value : "Hardy";
+}
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function formatSaveDate(value) {
+  if (!value) return "Not yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not yet";
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function pokemonFromTeamSearch(value) {
   return pokemonBySearchName.get(normalize(value));
 }
 
 function saveCaught() {
   writeJson(storageKeys.caught, [...state.caught]);
+  markSaveModified();
 }
 
 function saveTeam() {
   writeJson(storageKeys.team, state.team);
+  markSaveModified();
+}
+
+function saveBadges() {
+  writeJson(storageKeys.badges, state.badges);
+  markSaveModified();
+}
+
+function persistSaveMetadata() {
+  writeJson(storageKeys.saveMetadata, state.saveMetadata);
+}
+
+function persistSyncContext() {
+  writeJson(storageKeys.syncContext, state.syncContext);
+}
+
+function ensureSyncContext(code) {
+  if (state.syncContext.code === code) return;
+  state.syncContext = {
+    code,
+    lastSyncedRevision: null,
+    lastSyncedFingerprint: "",
+    lastSyncedAt: null,
+  };
+  state.syncSnapshot = null;
+  state.cloudHistory = [];
+  persistSyncContext();
+  renderRecoveryBackups();
+}
+
+function markSaveModified() {
+  state.saveMetadata.revision = Math.max(0, state.saveMetadata.revision) + 1;
+  state.saveMetadata.modifiedAt = new Date().toISOString();
+  persistSaveMetadata();
+  state.syncSnapshot = null;
+  if (state.syncCode && syncEndpoint) setSyncFreshness("local-newer");
+  updateSaveSummary();
 }
 
 function caughtCount() {
@@ -229,6 +362,15 @@ function pillButton(text, dataset = {}) {
   return button;
 }
 
+function quickTypeButton(type) {
+  const label = type === "all" ? "All" : type;
+  const button = pillButton(label, { quickType: type });
+  button.classList.add("type-quick-filter");
+  if (type !== "all") button.classList.add(`type-${normalize(type)}`);
+  if (elements.typeFilter.value === type) button.classList.add("is-active");
+  return button;
+}
+
 function imageNode(src, alt, width = 64, height = 64) {
   const image = document.createElement("img");
   image.src = src || "assets/unbound-mark.png";
@@ -240,6 +382,10 @@ function imageNode(src, alt, width = 64, height = 64) {
     image.src = "assets/unbound-mark.png";
   });
   return image;
+}
+
+function teamDisplayName(slot, entry) {
+  return slot.nickname.trim() || entry?.name || "Empty";
 }
 
 function spriteWell(entry, className = "sprite-well", size = 96) {
@@ -378,12 +524,13 @@ function renderEvolutionNav(entry) {
 function renderPokemonCard(entry) {
   const card = createElement("article", `pokemon-card ${state.caught.has(entry.constant) ? "is-caught" : ""}`);
   card.dataset.pokemonCard = entry.constant;
-  card.append(caughtToggleButton(entry.constant));
 
   const identity = createElement("div", "pokemon-card__identity");
   identity.append(spriteWell(entry));
   const titleBlock = createElement("div", "pokemon-card__title");
-  titleBlock.append(createElement("span", "dex-number", `#${entry.guideNumber}`));
+  const topLine = createElement("div", "pokemon-card__topline");
+  topLine.append(createElement("span", "dex-number", `#${entry.guideNumber}`), caughtToggleButton(entry.constant, true));
+  titleBlock.append(topLine);
   titleBlock.append(createElement("h2", "", entry.name));
   titleBlock.append(renderTypeRow(entry.types));
   identity.append(titleBlock);
@@ -434,7 +581,6 @@ function renderPokemonCard(entry) {
     );
   }
   if (entry.locations.length) detailRow.append(pill(`${entry.locations.length} locations`));
-  if (entry.evolutions.length) detailRow.append(pill(`${entry.evolutions.length} evolutions`));
   card.append(detailRow);
 
   if (entry.locations.length) {
@@ -463,7 +609,15 @@ function renderDex(resetLimit = false) {
   elements.dexGrid.replaceChildren(fragment);
   elements.dexResultCount.textContent = `Showing ${Math.min(list.length, state.dexLimit)} of ${list.length}`;
   elements.dexLoadMore.hidden = state.dexLimit >= list.length;
+  renderDexQuickFilters();
   scheduleAutoLoad("dex");
+}
+
+function renderDexQuickFilters() {
+  const typeOptions = ["all", ...new Set(pokemon.flatMap((entry) => entry.types))].sort((a, b) =>
+    a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b),
+  );
+  elements.typeQuickFilters.replaceChildren(...typeOptions.map((type) => quickTypeButton(type)));
 }
 
 function focusDexPokemon(constant) {
@@ -552,19 +706,14 @@ function renderLocationCard(location) {
 
 function renderLocations() {
   const list = filteredLocations();
-  state.locationIndex = Math.max(0, Math.min(state.locationIndex, list.length - 1));
-  elements.locationNav.hidden = !list.length;
-  elements.locationPrevious.disabled = state.locationIndex <= 0;
-  elements.locationNext.disabled = state.locationIndex >= list.length - 1;
   elements.locationResultCount.textContent = `Showing ${list.length} locations`;
-  elements.locationPosition.textContent = list.length
-    ? `Location ${state.locationIndex + 1} of ${list.length}`
-    : "Location 0 of 0";
   if (!list.length) {
     elements.locationGrid.replaceChildren(emptyState("No locations matched the current filters."));
     return;
   }
-  elements.locationGrid.replaceChildren(renderLocationCard(list[state.locationIndex]));
+  const fragment = document.createDocumentFragment();
+  list.forEach((location) => fragment.append(renderLocationCard(location)));
+  elements.locationGrid.replaceChildren(fragment);
 }
 
 function renderSpecialSections() {
@@ -1152,11 +1301,502 @@ function renderTeamCard(slot, index) {
 
 function updateOverview() {
   const currentCaughtCount = caughtCount();
-  elements.countPokemon.textContent = String(pokemon.length);
+  const selectedTeam = state.team.map((slot) => ({ slot, entry: pokemonByConstant.get(slot.species) || null }));
+  const activeTeam = selectedTeam.filter((item) => item.entry);
+  const caughtPercent = pokemon.length ? Math.round((currentCaughtCount / pokemon.length) * 100) : 0;
+  const badgePercent = TOTAL_BADGES ? Math.round((state.badges / TOTAL_BADGES) * 100) : 0;
+
+  elements.overviewTeamCount.textContent = `${activeTeam.length} / 6`;
+  const teamFragment = document.createDocumentFragment();
+  selectedTeam.forEach(({ slot, entry }, index) => {
+    const item = createElement("div", `overview-team-slot${entry ? "" : " is-empty"}`);
+    item.append(entry ? spriteWell(entry, "overview-team-slot__sprite", 48) : spriteWell(null, "overview-team-slot__sprite", 48));
+    const copy = createElement("span", "overview-team-slot__copy");
+    copy.append(createElement("strong", "", teamDisplayName(slot, entry)));
+    copy.append(createElement("small", "", entry ? `Slot ${index + 1}` : "Empty slot"));
+    item.append(copy);
+    teamFragment.append(item);
+  });
+  elements.overviewTeamList.replaceChildren(teamFragment);
+
   elements.countCaught.textContent = String(currentCaughtCount);
   elements.countCaughtTotal.textContent = String(pokemon.length);
-  elements.countLocations.textContent = String(guideData.locations.length);
-  elements.countMoves.textContent = String(guideData.moves.length);
+  elements.overviewCaughtProgress.style.width = `${caughtPercent}%`;
+
+  elements.badgeCount.textContent = String(state.badges);
+  elements.badgeTotal.textContent = String(TOTAL_BADGES);
+  elements.overviewBadgeProgress.style.width = `${badgePercent}%`;
+  elements.badgeDecrease.disabled = state.badges <= 0;
+  elements.badgeIncrease.disabled = state.badges >= TOTAL_BADGES;
+  const badgeFragment = document.createDocumentFragment();
+  for (let index = 0; index < TOTAL_BADGES; index += 1) {
+    badgeFragment.append(createElement("span", `badge-slot${index < state.badges ? " is-earned" : ""}`));
+  }
+  elements.badgeSlotList.replaceChildren(badgeFragment);
+}
+
+function updateSaveSummary() {
+  if (!elements.saveCaughtCount) return;
+  elements.saveCaughtCount.textContent = String(caughtCount());
+  elements.saveTeamCount.textContent = String(state.team.filter((slot) => slot.species).length);
+  elements.saveLocalRevision.textContent = String(state.saveMetadata.revision);
+  elements.saveLocalModified.textContent = formatSaveDate(state.saveMetadata.modifiedAt);
+}
+
+function createSaveDocument({ parentRevision = state.syncContext.lastSyncedRevision } = {}) {
+  return {
+    format: saveFormat,
+    version: saveVersion,
+    exportedAt: new Date().toISOString(),
+    caught: [...state.caught].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    badges: state.badges,
+    team: state.team.map((slot) => ({
+      species: slot.species,
+      nickname: cleanTeamNickname(slot.nickname),
+      ability: slot.ability,
+      nature: validNatureName(slot.nature),
+      moves: slot.moves.map((move) => validMoveName(move)),
+    })),
+    preferences: {
+      theme: currentTheme(),
+    },
+    sync: {
+      revision: state.saveMetadata.revision,
+      parentRevision,
+      modifiedAt: state.saveMetadata.modifiedAt,
+      deviceId: state.saveMetadata.deviceId,
+    },
+  };
+}
+
+function validateTeamSnapshot(input) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const slot = Array.isArray(input) ? input[index] || {} : {};
+    const species = pokemonByConstant.has(slot.species) ? slot.species : "";
+    const validated = createTeamSlot(species, {
+      nickname: cleanTeamNickname(slot.nickname),
+      nature: validNatureName(slot.nature),
+      moves: Array.from({ length: 4 }, (__, moveIndex) => validMoveName(slot.moves?.[moveIndex])),
+    });
+    validated.ability = validAbilityForSpecies(species, slot.ability);
+    return validated;
+  });
+}
+
+function validateSaveDocument(input) {
+  if (!input || input.format !== saveFormat || input.version !== saveVersion) {
+    throw new Error("This is not a supported Pokemon Unbound Field Guide save.");
+  }
+  if (!Array.isArray(input.caught) || !Array.isArray(input.team)) {
+    throw new Error("The save is missing caught progress or team data.");
+  }
+  const caught = [...new Set(input.caught.filter((constant) => pokemonByConstant.has(constant)))];
+  const badges = Math.max(0, Math.min(TOTAL_BADGES, Number(input.badges) || 0));
+  const team = validateTeamSnapshot(input.team);
+  const revision = Number(input.sync?.revision);
+  const parentRevision = input.sync?.parentRevision;
+  return {
+    format: saveFormat,
+    version: saveVersion,
+    exportedAt: typeof input.exportedAt === "string" ? input.exportedAt : null,
+    caught,
+    badges,
+    team,
+    preferences: {
+      theme: input.preferences?.theme === "dark" ? "dark" : "light",
+    },
+    sync: {
+      revision: Number.isInteger(revision) && revision >= 0 ? revision : 0,
+      parentRevision:
+        parentRevision === null || (Number.isInteger(parentRevision) && parentRevision >= 0) ? parentRevision : null,
+      modifiedAt:
+        typeof input.sync?.modifiedAt === "string"
+          ? input.sync.modifiedAt
+          : typeof input.exportedAt === "string"
+            ? input.exportedAt
+            : null,
+      deviceId: uuidPattern.test(input.sync?.deviceId || "") ? input.sync.deviceId : null,
+    },
+  };
+}
+
+function readLocalBackups() {
+  const backups = readJson(storageKeys.localBackups, []);
+  return Array.isArray(backups) ? backups : [];
+}
+
+function renderRecoveryBackups() {
+  if (!elements.syncRecoveryList) return;
+  const entries = [];
+  readLocalBackups().forEach((backup) => {
+    entries.push(`
+      <article class="sync-recovery-entry">
+        <div><strong>Local backup</strong><span>${formatSaveDate(backup.createdAt)} · ${backup.reason}</span></div>
+        <button type="button" data-restore-local="${backup.id}">Restore</button>
+      </article>
+    `);
+  });
+  state.cloudHistory.forEach((version) => {
+    entries.push(`
+      <article class="sync-recovery-entry">
+        <div><strong>Cloud revision ${version.revision}</strong><span>${formatSaveDate(version.modifiedAt || version.updatedAt)}</span></div>
+        <button type="button" data-restore-cloud="${version.versionId}">Restore locally</button>
+      </article>
+    `);
+  });
+  elements.syncRecoveryList.innerHTML = entries.join("") || '<p class="sync-recovery-empty">No recovery versions yet.</p>';
+}
+
+function saveLocalBackup(reason) {
+  const backups = readLocalBackups();
+  backups.unshift({
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    reason,
+    save: createSaveDocument(),
+  });
+  writeJson(storageKeys.localBackups, backups.slice(0, maxLocalBackups));
+  renderRecoveryBackups();
+}
+
+function applySaveDocument(input, { source = "import", createBackup = true } = {}) {
+  const save = validateSaveDocument(input);
+  if (createBackup) {
+    saveLocalBackup(source === "cloud" ? "Before loading cloud save" : "Before replacing local save");
+  }
+  state.caught = new Set(save.caught);
+  state.badges = save.badges;
+  state.team = validateTeamSnapshot(save.team);
+  writeJson(storageKeys.caught, [...state.caught]);
+  writeJson(storageKeys.badges, state.badges);
+  writeJson(storageKeys.team, state.team);
+  document.documentElement.dataset.theme = save.preferences.theme;
+  localStorage.setItem(storageKeys.theme, save.preferences.theme);
+  if (source === "cloud") {
+    state.saveMetadata.revision = save.sync.revision;
+    state.saveMetadata.modifiedAt = save.sync.modifiedAt;
+    if (save.sync.deviceId) state.saveMetadata.deviceId = save.sync.deviceId;
+    persistSaveMetadata();
+  } else {
+    state.saveMetadata.revision = Math.max(state.saveMetadata.revision, save.sync.revision);
+    markSaveModified();
+  }
+  renderAll();
+  return save;
+}
+
+function setSaveStatus(message, type = "") {
+  if (!elements.saveOperationStatus) return;
+  elements.saveOperationStatus.textContent = message;
+  elements.saveOperationStatus.dataset.status = type;
+}
+
+const bytesToBase64Url = (bytes) =>
+  btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+
+const base64UrlToBytes = (value) => {
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+};
+
+const bytesToHex = (bytes) => [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+
+function normalizedSyncCode() {
+  const code = elements.syncCode.value.trim().toLowerCase();
+  if (!uuidPattern.test(code)) throw new Error("Enter a valid sync UUID, or create a new one.");
+  state.syncCode = code;
+  localStorage.setItem(storageKeys.syncCode, code);
+  ensureSyncContext(code);
+  updateSyncControls();
+  return code;
+}
+
+async function syncIdentity(code) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`unbound:${code}`)));
+  return {
+    id: bytesToHex(digest),
+    key: await crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"]),
+  };
+}
+
+async function encryptSave(save, code) {
+  const { id, key } = await syncIdentity(code);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(save))),
+  );
+  return {
+    id,
+    envelope: {
+      version: 2,
+      iv: bytesToBase64Url(iv),
+      ciphertext: bytesToBase64Url(ciphertext),
+      updatedAt: new Date().toISOString(),
+      revision: save.sync.revision,
+      parentRevision: save.sync.parentRevision,
+      modifiedAt: save.sync.modifiedAt || new Date().toISOString(),
+      deviceId: save.sync.deviceId,
+    },
+  };
+}
+
+async function decryptSave(envelope, code) {
+  if (![1, 2].includes(envelope?.version) || !envelope.iv || !envelope.ciphertext) {
+    throw new Error("The cloud save has an unsupported encrypted format.");
+  }
+  const { key } = await syncIdentity(code);
+  try {
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: base64UrlToBytes(envelope.iv) },
+      key,
+      base64UrlToBytes(envelope.ciphertext),
+    );
+    return validateSaveDocument(JSON.parse(new TextDecoder().decode(plaintext)));
+  } catch {
+    throw new Error("The sync UUID could not decrypt this cloud save.");
+  }
+}
+
+function saveFingerprintPayload(save) {
+  const validated = validateSaveDocument(save);
+  return {
+    caught: [...validated.caught].sort(),
+    badges: validated.badges,
+    team: validated.team,
+    preferences: validated.preferences,
+  };
+}
+
+async function saveFingerprint(save) {
+  const bytes = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(saveFingerprintPayload(save)))),
+  );
+  return bytesToHex(bytes);
+}
+
+function isPristineSave(save) {
+  const payload = saveFingerprintPayload(save);
+  return !payload.caught.length && payload.badges === 0 && payload.team.every((slot) => !slot.species);
+}
+
+function classifySyncStatus({ localSave, cloudSave, localFingerprint, cloudFingerprint, context }) {
+  if (!cloudSave) return "no-cloud";
+  if (localFingerprint === cloudFingerprint) return "in-sync";
+  if (!context.lastSyncedFingerprint) return isPristineSave(localSave) ? "cloud-newer" : "conflict";
+  const localChanged = localFingerprint !== context.lastSyncedFingerprint;
+  const cloudChanged = cloudFingerprint !== context.lastSyncedFingerprint;
+  if (localChanged && cloudChanged) return "conflict";
+  if (cloudChanged) return "cloud-newer";
+  if (localChanged) return "local-newer";
+  return "in-sync";
+}
+
+function setSyncFreshness(status, snapshot = state.syncSnapshot) {
+  state.syncStatus = status;
+  if (!elements.syncFreshness) return;
+  const cloudDate = snapshot?.cloudSave?.sync?.modifiedAt || snapshot?.envelope?.updatedAt;
+  const messages = {
+    unchecked: ["Not checked", "Check before moving between devices."],
+    checking: ["Checking...", "Comparing this device with the encrypted cloud save."],
+    "no-cloud": ["No cloud save yet", "This device can create the first encrypted cloud revision."],
+    "in-sync": ["In sync", `Both copies match. Last cloud change: ${formatSaveDate(cloudDate)}.`],
+    "local-newer": ["This device is newer", "Local changes have not been uploaded yet."],
+    "cloud-newer": ["Cloud save is newer", `Load the cloud copy from ${formatSaveDate(cloudDate)} before continuing here.`],
+    conflict: ["Changes on both copies", "Choose which copy to keep. Your current device will be backed up first."],
+    error: ["Could not check", "Your local save has not been changed."],
+  };
+  const [title, detail] = messages[status] || messages.unchecked;
+  elements.syncFreshness.dataset.status = status;
+  elements.syncFreshnessTitle.textContent = title;
+  elements.syncFreshnessDetail.textContent = detail;
+  elements.syncConflictActions.hidden = !["cloud-newer", "conflict"].includes(status);
+}
+
+function updateSyncControls() {
+  if (!elements.syncCode) return;
+  const configured = Boolean(syncEndpoint);
+  const hasCode = Boolean(state.syncCode);
+  elements.syncCode.value = state.syncCode;
+  document.querySelector("#check-cloud-save").disabled = !configured || !hasCode;
+  document.querySelector("#upload-cloud-save").disabled = !configured || !hasCode;
+  document.querySelector("#download-cloud-save").disabled = !configured || !hasCode;
+  document.querySelector("#refresh-sync-history").disabled = !configured || !hasCode;
+  document.querySelector("#copy-sync-code").disabled = !hasCode;
+  document.querySelector("#forget-sync-code").disabled = !hasCode;
+  elements.syncServiceStatus.textContent = configured
+    ? "Cloud sync service connected. Saves are encrypted before upload."
+    : "Cloud sync is not connected yet. Export and import already work; complete the Cloudflare setup to enable it.";
+  elements.syncServiceStatus.dataset.connected = String(configured);
+  if (!configured || !hasCode) setSyncFreshness("unchecked");
+}
+
+async function fetchCloudSnapshot(code = normalizedSyncCode()) {
+  if (!syncEndpoint) throw new Error("Cloud sync is not connected yet.");
+  const { id } = await syncIdentity(code);
+  const response = await fetch(`${syncEndpoint}/saves/${id}`);
+  if (response.status === 404) return { id, envelope: null, cloudSave: null };
+  if (!response.ok) throw new Error("The encrypted cloud save could not be downloaded.");
+  const envelope = await response.json();
+  return { id, envelope, cloudSave: await decryptSave(envelope, code) };
+}
+
+async function checkSyncStatus({ quiet = false } = {}) {
+  if (!quiet) setSyncFreshness("checking");
+  try {
+    const code = normalizedSyncCode();
+    const remote = await fetchCloudSnapshot(code);
+    const localSave = createSaveDocument();
+    const localFingerprint = await saveFingerprint(localSave);
+    const cloudFingerprint = remote.cloudSave ? await saveFingerprint(remote.cloudSave) : "";
+    const status = classifySyncStatus({
+      localSave,
+      cloudSave: remote.cloudSave,
+      localFingerprint,
+      cloudFingerprint,
+      context: state.syncContext,
+    });
+    state.syncSnapshot = { ...remote, localSave, localFingerprint, cloudFingerprint };
+    if (status === "in-sync" && remote.cloudSave) {
+      recordSyncBaseline(code, remote.cloudSave, cloudFingerprint);
+    }
+    setSyncFreshness(status, state.syncSnapshot);
+    return state.syncSnapshot;
+  } catch (error) {
+    setSyncFreshness("error");
+    throw error;
+  }
+}
+
+function recordSyncBaseline(code, save, fingerprint) {
+  state.syncContext = {
+    code,
+    lastSyncedRevision: save.sync.revision,
+    lastSyncedFingerprint: fingerprint,
+    lastSyncedAt: new Date().toISOString(),
+  };
+  persistSyncContext();
+}
+
+async function uploadCurrentSave({ force = false } = {}) {
+  const code = normalizedSyncCode();
+  const snapshot = await checkSyncStatus();
+  if (["cloud-newer", "conflict"].includes(state.syncStatus) && !force) {
+    setSaveStatus("Cloud changes were found. Choose which copy to keep; nothing was overwritten.", "warning");
+    return false;
+  }
+  if (state.syncStatus === "in-sync" && !force) {
+    setSaveStatus("This device already matches the cloud save.", "success");
+    return true;
+  }
+  const cloudRevision = snapshot.cloudSave?.sync?.revision || 0;
+  if (state.saveMetadata.revision <= cloudRevision || state.saveMetadata.revision < 1) {
+    state.saveMetadata.revision = cloudRevision;
+    markSaveModified();
+  }
+  const save = createSaveDocument({ parentRevision: snapshot.cloudSave ? cloudRevision : null });
+  const fingerprint = await saveFingerprint(save);
+  const { id, envelope } = await encryptSave(save, code);
+  const response = await fetch(`${syncEndpoint}/saves/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(envelope),
+  });
+  if (response.status === 409) {
+    await checkSyncStatus();
+    setSaveStatus("The cloud save changed during upload. Choose which copy to keep; nothing was overwritten.", "warning");
+    return false;
+  }
+  if (!response.ok) throw new Error("The encrypted save could not be uploaded.");
+  recordSyncBaseline(code, save, fingerprint);
+  state.syncSnapshot = { id, envelope, cloudSave: save, localSave: save, localFingerprint: fingerprint, cloudFingerprint: fingerprint };
+  setSyncFreshness("in-sync", state.syncSnapshot);
+  setSaveStatus("Encrypted save uploaded. This device and cloud are now in sync.", "success");
+  return true;
+}
+
+async function loadCloudSave({ force = false } = {}) {
+  const code = normalizedSyncCode();
+  const snapshot = await checkSyncStatus();
+  if (!snapshot.cloudSave) throw new Error("No cloud save exists for this UUID yet.");
+  if (state.syncStatus === "in-sync" && !force) {
+    setSaveStatus("This device already matches the cloud save.", "success");
+    return true;
+  }
+  if (["local-newer", "conflict"].includes(state.syncStatus) && !force) {
+    elements.syncConflictActions.hidden = false;
+    setSaveStatus("This device also has changes. Choose which copy to keep; nothing was overwritten.", "warning");
+    return false;
+  }
+  applySaveDocument(snapshot.cloudSave, { source: "cloud" });
+  recordSyncBaseline(code, snapshot.cloudSave, snapshot.cloudFingerprint);
+  state.syncSnapshot = { ...snapshot, localSave: snapshot.cloudSave, localFingerprint: snapshot.cloudFingerprint };
+  setSyncFreshness("in-sync", state.syncSnapshot);
+  setSaveStatus("Cloud save loaded. The previous local copy is available under Recovery versions.", "success");
+  return true;
+}
+
+async function loadCloudHistory() {
+  if (!syncEndpoint) throw new Error("Cloud sync is not connected yet.");
+  const code = normalizedSyncCode();
+  const { id } = await syncIdentity(code);
+  const response = await fetch(`${syncEndpoint}/saves/${id}/history`);
+  if (!response.ok) throw new Error("Cloud recovery versions could not be loaded.");
+  state.cloudHistory = (await response.json()).versions || [];
+  renderRecoveryBackups();
+}
+
+async function restoreCloudVersion(versionId) {
+  if (!syncEndpoint) throw new Error("Cloud sync is not connected yet.");
+  const code = normalizedSyncCode();
+  const { id } = await syncIdentity(code);
+  const response = await fetch(`${syncEndpoint}/saves/${id}/history/${encodeURIComponent(versionId)}`);
+  if (!response.ok) throw new Error("That cloud recovery version is no longer available.");
+  const save = await decryptSave(await response.json(), code);
+  if (!window.confirm(`Restore cloud revision ${save.sync.revision} to this device? The current local save will be backed up first.`)) return;
+  applySaveDocument(save, { source: "recovery" });
+  setSyncFreshness("local-newer");
+  setSaveStatus("Recovery version restored locally. Review it, then save it to the cloud when ready.", "success");
+}
+
+function restoreLocalBackup(id) {
+  const backup = readLocalBackups().find((entry) => entry.id === id);
+  if (!backup) throw new Error("That local backup is no longer available.");
+  if (!window.confirm("Restore this local backup? The current save will be backed up first.")) return;
+  applySaveDocument(backup.save, { source: "recovery" });
+  setSaveStatus("Local backup restored.", "success");
+}
+
+async function copySyncCode() {
+  const code = normalizedSyncCode();
+  await navigator.clipboard.writeText(code);
+  elements.syncCode.focus();
+  elements.syncCode.select();
+  setSaveStatus("Sync UUID copied to the clipboard.", "success");
+}
+
+function exportSave() {
+  const blob = new Blob([`${JSON.stringify(createSaveDocument(), null, 2)}\n`], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `unbound-field-guide-save-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  setSaveStatus("Save exported. Keep the file somewhere safe.", "success");
+}
+
+async function importSaveFile(file) {
+  if (!file) return;
+  try {
+    const save = validateSaveDocument(JSON.parse(await file.text()));
+    if (!window.confirm("Replace this device's current Unbound progress with the imported save?")) return;
+    applySaveDocument(save);
+    setSaveStatus("Save imported successfully.", "success");
+  } catch (error) {
+    setSaveStatus(error.message || "The selected save could not be imported.", "error");
+  }
 }
 
 function switchView(view) {
@@ -1198,10 +1838,12 @@ function populateFilters() {
   elements.methodFilter.replaceChildren(
     ...methods.map((method) => new Option(method === "all" ? "All methods" : method, method)),
   );
+  renderDexQuickFilters();
 }
 
 function renderAll() {
   updateOverview();
+  updateSaveSummary();
   renderDex();
   renderLocations();
   renderSpecialSections();
@@ -1232,21 +1874,17 @@ function bindEvents() {
     state.dexLimit += INITIAL_CARD_BATCH;
     renderDex();
   });
+  elements.typeQuickFilters.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-quick-type]");
+    if (!button) return;
+    elements.typeFilter.value = button.dataset.quickType;
+    renderDex(true);
+  });
 
   elements.locationSearch.addEventListener("input", () => {
-    state.locationIndex = 0;
     renderLocations();
   });
   elements.methodFilter.addEventListener("change", () => {
-    state.locationIndex = 0;
-    renderLocations();
-  });
-  elements.locationPrevious.addEventListener("click", () => {
-    state.locationIndex = Math.max(0, state.locationIndex - 1);
-    renderLocations();
-  });
-  elements.locationNext.addEventListener("click", () => {
-    state.locationIndex += 1;
     renderLocations();
   });
   elements.caughtSearch.addEventListener("input", () => {
@@ -1278,18 +1916,129 @@ function bindEvents() {
     elements.zPanel.open = false;
   });
 
+  document.querySelector("#export-save").addEventListener("click", exportSave);
+  document.querySelector("#import-save-button").addEventListener("click", () => {
+    elements.importSaveFile.click();
+  });
+  elements.importSaveFile.addEventListener("change", (event) => {
+    importSaveFile(event.target.files?.[0]);
+    event.target.value = "";
+  });
+  document.querySelector("#create-sync-code").addEventListener("click", () => {
+    state.syncCode = crypto.randomUUID();
+    localStorage.setItem(storageKeys.syncCode, state.syncCode);
+    ensureSyncContext(state.syncCode);
+    updateSyncControls();
+    setSyncFreshness("unchecked");
+    setSaveStatus("New private sync UUID created. Save it somewhere secure.", "success");
+  });
+  elements.syncCode.addEventListener("input", () => {
+    state.syncCode = elements.syncCode.value.trim();
+    if (state.syncCode) localStorage.setItem(storageKeys.syncCode, state.syncCode);
+    else localStorage.removeItem(storageKeys.syncCode);
+    state.syncSnapshot = null;
+    state.cloudHistory = [];
+    renderRecoveryBackups();
+    updateSyncControls();
+    setSyncFreshness("unchecked");
+  });
+  document.querySelector("#copy-sync-code").addEventListener("click", () => {
+    copySyncCode().catch((error) => setSaveStatus(error.message, "error"));
+  });
+  document.querySelector("#check-cloud-save").addEventListener("click", () => {
+    checkSyncStatus()
+      .then(() => setSaveStatus("Save freshness check complete.", "success"))
+      .catch((error) => setSaveStatus(error.message || "Cloud status check failed.", "error"));
+  });
+  document.querySelector("#upload-cloud-save").addEventListener("click", async () => {
+    try {
+      await uploadCurrentSave();
+    } catch (error) {
+      setSaveStatus(error.message || "Cloud upload failed.", "error");
+    }
+  });
+  document.querySelector("#download-cloud-save").addEventListener("click", async () => {
+    try {
+      const snapshot = await checkSyncStatus();
+      if (!snapshot.cloudSave) throw new Error("No cloud save exists for this UUID yet.");
+      if (
+        state.syncStatus === "cloud-newer" &&
+        !window.confirm("Load the newer cloud save? The current local save will be backed up first.")
+      ) {
+        return;
+      }
+      await loadCloudSave();
+    } catch (error) {
+      setSaveStatus(error.message || "Cloud download failed.", "error");
+    }
+  });
+  document.querySelector("#use-local-save").addEventListener("click", async () => {
+    if (!window.confirm("Keep this device's save and replace the current cloud copy? Both copies will remain in Recovery versions.")) return;
+    try {
+      await uploadCurrentSave({ force: true });
+    } catch (error) {
+      setSaveStatus(error.message || "Cloud upload failed.", "error");
+    }
+  });
+  document.querySelector("#use-cloud-save").addEventListener("click", async () => {
+    if (!window.confirm("Use the cloud save on this device? The current local copy will be backed up first.")) return;
+    try {
+      await loadCloudSave({ force: true });
+    } catch (error) {
+      setSaveStatus(error.message || "Cloud download failed.", "error");
+    }
+  });
+  document.querySelector("#refresh-sync-history").addEventListener("click", () => {
+    loadCloudHistory()
+      .then(() => setSaveStatus("Recovery versions refreshed.", "success"))
+      .catch((error) => setSaveStatus(error.message || "Recovery versions could not be loaded.", "error"));
+  });
+  elements.syncRecoveryList.addEventListener("click", (event) => {
+    const localButton = event.target.closest("[data-restore-local]");
+    const cloudButton = event.target.closest("[data-restore-cloud]");
+    try {
+      if (localButton) restoreLocalBackup(localButton.dataset.restoreLocal);
+      if (cloudButton) {
+        restoreCloudVersion(cloudButton.dataset.restoreCloud).catch((error) =>
+          setSaveStatus(error.message || "Recovery failed.", "error"),
+        );
+      }
+    } catch (error) {
+      setSaveStatus(error.message || "Recovery failed.", "error");
+    }
+  });
+  document.querySelector("#forget-sync-code").addEventListener("click", () => {
+    state.syncCode = "";
+    state.syncContext = {
+      code: "",
+      lastSyncedRevision: null,
+      lastSyncedFingerprint: "",
+      lastSyncedAt: null,
+    };
+    state.syncSnapshot = null;
+    state.cloudHistory = [];
+    localStorage.removeItem(storageKeys.syncCode);
+    localStorage.removeItem(storageKeys.syncContext);
+    renderRecoveryBackups();
+    updateSyncControls();
+    setSaveStatus("This device forgot the sync UUID. The encrypted cloud save was not deleted.", "success");
+  });
+
   document.querySelector("#theme-toggle").addEventListener("click", () => {
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     localStorage.setItem(storageKeys.theme, next);
+    markSaveModified();
   });
 
   document.querySelector("#reset-progress").addEventListener("click", () => {
     if (!confirm("Reset caught tracker and team builder data for this browser?")) return;
     state.caught.clear();
     state.team = normalizeTeam([]);
+    state.badges = 0;
     saveCaught();
     saveTeam();
+    saveBadges();
     renderAll();
   });
 
@@ -1298,6 +2047,21 @@ function bindEvents() {
     saveTeam();
     renderTeam();
     updateOverview();
+  });
+
+  elements.badgeDecrease.addEventListener("click", () => {
+    state.badges = Math.max(0, state.badges - 1);
+    saveBadges();
+    updateOverview();
+  });
+  elements.badgeIncrease.addEventListener("click", () => {
+    state.badges = Math.min(TOTAL_BADGES, state.badges + 1);
+    saveBadges();
+    updateOverview();
+  });
+
+  elements.backToTop.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
   document.addEventListener("click", (event) => {
@@ -1390,17 +2154,30 @@ function bindEvents() {
   });
 
   window.addEventListener("scroll", () => {
+    elements.backToTop.classList.toggle("is-visible", window.scrollY > 420);
     if (window.innerHeight + window.scrollY < document.documentElement.scrollHeight - 360) return;
     loadNextBatch(state.view);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && syncEndpoint && state.syncCode) {
+      checkSyncStatus({ quiet: true }).catch(() => setSyncFreshness("error"));
+    }
   });
 }
 
 elements.caughtFilter.value = state.caughtFilter;
+persistSaveMetadata();
+if (state.syncCode) ensureSyncContext(state.syncCode);
 populateFilters();
+updateSyncControls();
+renderRecoveryBackups();
 bindEvents();
 renderAll();
 
 const initialView = location.hash.replace("#", "");
 if (document.querySelector(`[data-view-panel="${initialView}"]`)) {
   switchView(initialView);
+}
+if (syncEndpoint && state.syncCode) {
+  checkSyncStatus({ quiet: true }).catch(() => setSyncFreshness("error"));
 }

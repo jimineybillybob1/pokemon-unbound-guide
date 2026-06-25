@@ -16,6 +16,7 @@
     </script>
     <link rel="stylesheet" href="styles.css" />
     <script src="data/unbound-data.js" defer></script>
+    <script src="sync-config.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -36,22 +37,57 @@
     </header>
 
     <main>
+      <section class="hero-banner" aria-label="Pokemon Unbound guide banner">
+        <div class="hero-banner__media" role="img" aria-label="Pokemon Unbound cover art"></div>
+        <div class="hero-banner__content">
+          <p class="eyebrow">Pokemon Unbound companion</p>
+          <h1>Track your full dex, encounters, moves, items, and team plans in one place.</h1>
+          <p class="hero-banner__summary">
+            Built around Unbound-focused source data with synced caught tracking, encounter lookups, move reference,
+            and team-building tools.
+          </p>
+          <div class="hero-banner__actions">
+            <button class="text-button" type="button" data-open-view="dex">Open Full Dex</button>
+            <button class="text-button" type="button" data-open-view="locations">Browse Locations</button>
+            <button class="text-button" type="button" data-open-view="team">Build a Team</button>
+          </div>
+        </div>
+      </section>
       <section class="overview" aria-label="Guide overview">
-        <article>
-          <span>Pokemon</span>
-          <strong id="count-pokemon">0</strong>
+        <article class="overview-card overview-card--team">
+          <div class="overview-card__header">
+            <div>
+              <span>Current team</span>
+              <strong id="overview-team-count">0 / 6</strong>
+            </div>
+            <button class="text-button" type="button" data-open-view="team">Open team</button>
+          </div>
+          <div class="overview-team-list" id="overview-team-list"></div>
         </article>
-        <article>
-          <span>Caught</span>
-          <strong><span id="count-caught">0</span> / <span id="count-caught-total">0</span></strong>
+        <article class="overview-card">
+          <div class="overview-card__header">
+            <div>
+              <span>Caught progress</span>
+              <strong><span id="count-caught">0</span> / <span id="count-caught-total">0</span></strong>
+            </div>
+            <button class="text-button" type="button" data-open-view="caught">Tracker</button>
+          </div>
+          <div class="progress-bar overview-progress"><span id="overview-caught-progress"></span></div>
         </article>
-        <article>
-          <span>Locations</span>
-          <strong id="count-locations">0</strong>
-        </article>
-        <article>
-          <span>Moves</span>
-          <strong id="count-moves">0</strong>
+        <article class="overview-card">
+          <div class="overview-card__header">
+            <div>
+              <span>Badge tracker</span>
+              <strong><span id="badge-count">0</span> / <span id="badge-total">8</span></strong>
+            </div>
+            <div class="overview-badge-actions">
+              <button class="icon-button" id="badge-decrease" type="button" aria-label="Remove badge">-</button>
+              <button class="icon-button" id="badge-increase" type="button" aria-label="Add badge">+</button>
+            </div>
+          </div>
+          <div class="progress-bar overview-progress"><span id="overview-badge-progress"></span></div>
+          <p class="overview-note">Manual tracker for now. The repo does not yet include a full Unbound badge dataset.</p>
+          <div class="badge-slot-list" id="badge-slot-list" aria-label="Badge progress slots"></div>
         </article>
       </section>
 
@@ -88,6 +124,10 @@
           <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3" /><circle cx="5" cy="10" r="2" /><circle cx="19" cy="10" r="2" /><path d="M7 20v-2a5 5 0 0 1 10 0v2M1.5 20v-1.5A3.5 3.5 0 0 1 5 15M22.5 20v-1.5A3.5 3.5 0 0 0 19 15" /></svg>
           <span>Team Builder</span>
         </button>
+        <button class="view-tab" type="button" data-view="save">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v6h8V4M8 20v-6h8v6" /></svg>
+          <span>Save &amp; Sync</span>
+        </button>
       </nav>
 
       <section class="guide-view is-active" id="view-dex" data-view-panel="dex">
@@ -98,23 +138,26 @@
           </div>
           <p id="dex-result-count">Showing Pokemon</p>
         </div>
-        <div class="toolbar">
-          <label>
-            <span>Search</span>
-            <input id="dex-search" type="search" placeholder="Name, type, ability, item, location" />
-          </label>
-          <label>
-            <span>Type</span>
-            <select id="type-filter"></select>
-          </label>
-          <label>
-            <span>Location</span>
-            <select id="location-filter"></select>
-          </label>
-          <label class="checkbox-field">
-            <input id="hide-placeholders" type="checkbox" checked />
-            <span>Hide placeholders</span>
-          </label>
+        <div class="dex-controls">
+          <div class="toolbar toolbar--dex">
+            <label>
+              <span>Search</span>
+              <input id="dex-search" type="search" placeholder="Name, type, ability, item, location" />
+            </label>
+            <label>
+              <span>Type</span>
+              <select id="type-filter"></select>
+            </label>
+            <label>
+              <span>Location</span>
+              <select id="location-filter"></select>
+            </label>
+            <label class="checkbox-field">
+              <input id="hide-placeholders" type="checkbox" checked />
+              <span>Hide placeholders</span>
+            </label>
+          </div>
+          <div class="type-quick-filters" id="type-quick-filters" aria-label="Quick Pokemon type filters"></div>
         </div>
         <div class="card-grid pokemon-grid" id="dex-grid"></div>
         <button class="load-more" id="dex-load-more" type="button">Load more</button>
@@ -137,11 +180,6 @@
             <span>Method</span>
             <select id="method-filter"></select>
           </label>
-        </div>
-        <div class="location-nav" id="location-nav">
-          <button class="text-button" id="location-prev" type="button">Previous</button>
-          <p id="location-position">Location 0 of 0</p>
-          <button class="text-button" id="location-next" type="button">Next</button>
         </div>
         <div class="location-grid" id="location-grid"></div>
         <section class="data-section">
@@ -284,6 +322,94 @@
         <div class="team-grid" id="team-grid"></div>
         <datalist id="team-pokemon-options"></datalist>
       </section>
+
+      <section class="guide-view" id="view-save" data-view-panel="save">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Portable progress</p>
+            <h1>Save &amp; Sync</h1>
+          </div>
+          <p>Back up this browser or securely move your Unbound guide progress between devices.</p>
+        </div>
+
+        <div class="save-summary" aria-label="Current save summary">
+          <article><span>Caught</span><strong id="save-caught-count">0</strong></article>
+          <article><span>Team members</span><strong id="save-team-count">0</strong></article>
+          <article><span>Local revision</span><strong id="save-local-revision">0</strong></article>
+          <article><span>Last changed</span><strong class="save-summary__date" id="save-local-modified">Not yet</strong></article>
+        </div>
+
+        <div class="save-management-grid">
+          <section class="save-panel">
+            <div>
+              <p class="eyebrow">Offline backup</p>
+              <h3>Export or import a save file</h3>
+              <p>
+                Exported JSON includes caught progress, badge progress, your full team builder, and the current theme.
+              </p>
+            </div>
+            <div class="save-actions">
+              <button class="text-button save-primary-button" id="export-save" type="button">Export save</button>
+              <button class="text-button save-secondary-button" id="import-save-button" type="button">Import save</button>
+              <input id="import-save-file" type="file" accept="application/json,.json" hidden />
+            </div>
+          </section>
+
+          <section class="save-panel save-panel--cloud">
+            <div>
+              <p class="eyebrow">Encrypted cloud sync</p>
+              <h3>Use one private UUID across devices</h3>
+              <p>
+                Your save is encrypted in this browser before upload. The sync service cannot read it. Anyone with the
+                UUID can access the save, so keep it private.
+              </p>
+            </div>
+            <label class="sync-code-field">
+              <span>Private sync UUID</span>
+              <input
+                id="sync-code"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                placeholder="Create or enter a sync UUID"
+              />
+            </label>
+            <p class="sync-service-status" id="sync-service-status"></p>
+            <section class="sync-freshness" id="sync-freshness" data-status="unchecked" aria-live="polite">
+              <span>Save freshness</span>
+              <strong id="sync-freshness-title">Not checked</strong>
+              <p id="sync-freshness-detail">Check before moving between devices.</p>
+            </section>
+            <div class="sync-conflict-actions" id="sync-conflict-actions" hidden>
+              <strong>Choose the copy to keep</strong>
+              <p>The other copy will still be retained in Recovery versions.</p>
+              <div class="save-actions">
+                <button class="text-button save-primary-button" id="use-local-save" type="button">Keep this device</button>
+                <button class="text-button save-secondary-button" id="use-cloud-save" type="button">Use cloud save</button>
+              </div>
+            </div>
+            <details class="sync-recovery">
+              <summary>Recovery versions</summary>
+              <p>Up to five local backups and eight encrypted cloud revisions are retained.</p>
+              <button class="text-button save-secondary-button" id="refresh-sync-history" type="button">
+                Refresh cloud versions
+              </button>
+              <div class="sync-recovery-list" id="sync-recovery-list"></div>
+            </details>
+            <div class="save-actions save-actions--cloud">
+              <button class="text-button save-primary-button" id="create-sync-code" type="button">Create UUID</button>
+              <button class="text-button save-secondary-button" id="copy-sync-code" type="button">Copy UUID</button>
+              <button class="text-button save-secondary-button" id="check-cloud-save" type="button">Check status</button>
+              <button class="text-button save-secondary-button" id="upload-cloud-save" type="button">Save to cloud</button>
+              <button class="text-button save-secondary-button" id="download-cloud-save" type="button">Load from cloud</button>
+              <button class="text-button save-text-button" id="forget-sync-code" type="button">Forget UUID</button>
+            </div>
+          </section>
+        </div>
+        <p class="save-operation-status" id="save-operation-status" aria-live="polite"></p>
+      </section>
     </main>
     <footer class="site-footer">
       <p>
@@ -291,6 +417,7 @@
         documentation with separate Unbound data and storage keys.
       </p>
     </footer>
+    <button class="back-to-top" id="back-to-top" type="button" aria-label="Back to top">Top</button>
     <dialog id="move-popup" class="move-popup">
       <form method="dialog" class="move-popup__frame">
         <header class="move-popup__header">

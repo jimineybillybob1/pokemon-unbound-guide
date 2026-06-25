@@ -157,12 +157,47 @@ The build script resolves sprite and icon paths automatically. Run `validate_dat
 
 The `documentation/fetched-from-repo/` directory is ignored by git, so only the built `data/unbound-data.*` files are committed.
 
+## Enable Encrypted Cloud Sync
+
+The guide now includes a **Save & Sync** tab. Export and import always work locally. Optional cloud sync uses the
+Worker in `sync-worker/`, stores only browser-encrypted save data, and treats the UUID as the private recovery key.
+Losing the UUID means losing access to that cloud save. Cloud saves expire after 400 days without a new upload.
+
+Each device tracks a local revision and the last encrypted cloud revision it saw. The guide checks freshness when it
+opens, returns to the foreground, or is checked manually. It reports **in sync**, **this device is newer**,
+**cloud save is newer**, or **changes on both copies**. A conflict never overwrites automatically: the user chooses
+which copy to keep, the current local save is backed up, and the Worker retains up to eight encrypted cloud revisions.
+Up to five replacement-time backups are also retained locally in the browser.
+
+One-time Cloudflare setup:
+
+1. Create a [Cloudflare account](https://dash.cloudflare.com/) and enable a `workers.dev` subdomain if prompted.
+2. In Cloudflare, create a Workers KV namespace named `unbound-field-guide-saves` and copy its namespace ID.
+3. Create a Cloudflare API token using the **Edit Cloudflare Workers** template. It needs permission to deploy
+   Workers and edit Workers KV.
+4. Copy the Cloudflare account ID from the dashboard.
+5. In the GitHub repository, open **Settings > Secrets and variables > Actions** and add:
+   - Secret `CLOUDFLARE_API_TOKEN`
+   - Secret `CLOUDFLARE_ACCOUNT_ID`
+   - Variable `CLOUDFLARE_KV_NAMESPACE_ID`
+6. Run the **Deploy sync Worker** workflow from the GitHub Actions tab.
+7. Copy the deployed Worker URL, such as
+   `https://unbound-field-guide-sync.<your-subdomain>.workers.dev`.
+8. Choose one of these ways to expose the endpoint to the site:
+   - **Recommended:** switch GitHub Pages to **GitHub Actions** and set the repository variable
+     `UNBOUND_SYNC_ENDPOINT`, then run the **Deploy GitHub Pages** workflow.
+   - **Simple/manual:** edit `sync-config.js` and set `window.UNBOUND_SYNC_ENDPOINT` to the Worker URL.
+
+Relevant Cloudflare documentation:
+
+- [Workers KV getting started](https://developers.cloudflare.com/kv/get-started/)
+- [Deploy Workers with GitHub Actions](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)
+
 ## Known Limitations
 
 - **Trainer teams** — Not included in the guide build
 - **Move/ability metadata** — Depends on fetched-from-repo CFRU files being present; run `scripts\fetch_unbound_source.py` before rebuilding if you want full move and ability detail coverage
 - **Maps** — Map data not yet included
-- **Cloud sync** — Not implemented
 
 ## Data Quality Notes
 
