@@ -1756,7 +1756,9 @@ select {
 
 .location-reference-table td {
   min-width: 0;
-  max-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 [data-theme="dark"] .location-reference-table th,
@@ -1785,6 +1787,8 @@ select {
 }
 
 .location-item-detail {
+  display: block;
+  width: 100%;
   margin-top: 2px;
   color: var(--muted);
   font-size: 0.8rem;
