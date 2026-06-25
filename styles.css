@@ -488,7 +488,7 @@ label span,
 .overview-team-slot {
   display: grid;
   justify-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 4px 2px;
   border: 0;
   border-radius: 0;
@@ -499,8 +499,8 @@ label span,
 }
 
 .overview-team-slot__sprite {
-  width: 126px;
-  height: 126px;
+  width: 142px;
+  height: 142px;
   border-radius: 16px;
   border-color: rgba(178, 159, 255, 0.34);
   background:
@@ -509,16 +509,16 @@ label span,
 }
 
 .overview-team-slot__sprite img {
-  width: 108px;
-  height: 108px;
+  width: 122px;
+  height: 122px;
   object-fit: contain;
   image-rendering: pixelated;
 }
 
 .overview-team-slot__sprite.has-entry img {
-  width: 112px;
-  height: 112px;
-  transform: scale(1.18);
+  width: 126px;
+  height: 126px;
+  transform: scale(1.2);
   transform-origin: center;
 }
 
@@ -533,14 +533,13 @@ label span,
 }
 
 .overview-team-slot__copy strong {
-  overflow: hidden;
   margin: 0;
   font-family: var(--font-ui);
   font-size: 0.82rem;
   line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 120px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 140px;
 }
 
 .overview-team-slot__copy small {
@@ -2513,19 +2512,19 @@ th {
   }
 
   .overview-team-slot__sprite {
-    width: 102px;
-    height: 102px;
+    width: 114px;
+    height: 114px;
   }
 
   .overview-team-slot__sprite img {
-    width: 88px;
-    height: 88px;
+    width: 98px;
+    height: 98px;
   }
 
   .overview-team-slot__sprite.has-entry img {
-    width: 92px;
-    height: 92px;
-    transform: scale(1.12);
+    width: 102px;
+    height: 102px;
+    transform: scale(1.14);
   }
 
   .app-header {
