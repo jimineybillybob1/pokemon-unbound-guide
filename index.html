@@ -72,6 +72,10 @@
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 4 14 16M19 4 5 20" /></svg>
           <span>Moves</span>
         </button>
+        <button class="view-tab" type="button" data-view="tutors">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10" /></svg>
+          <span>Tutors</span>
+        </button>
         <button class="view-tab" type="button" data-view="items">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7h10l3 5v8H4v-8l3-5ZM9 7V4h6v3M4 12h16" /></svg>
           <span>Items</span>
@@ -158,8 +162,14 @@
             <span>Search</span>
             <input id="caught-search" type="search" placeholder="Filter tracker" />
           </label>
-          <button class="text-button" id="mark-visible-caught" type="button">Mark Visible</button>
-          <button class="text-button" id="clear-visible-caught" type="button">Clear Visible</button>
+          <label>
+            <span>Status</span>
+            <select id="caught-filter">
+              <option value="all">All Pokemon</option>
+              <option value="caught">Caught only</option>
+              <option value="uncaught">Uncaught only</option>
+            </select>
+          </label>
         </div>
         <div class="caught-list" id="caught-list"></div>
       </section>
@@ -183,17 +193,21 @@
               <option value="all">All sources</option>
               <option value="levelUp">Level-up</option>
               <option value="egg">Egg moves</option>
-              <option value="tutor">Frontier tutors</option>
             </select>
           </label>
         </div>
-        <div class="move-layout">
-          <div class="move-list" id="move-list"></div>
-          <aside class="side-panel">
-            <h2>Battle Frontier Tutors</h2>
-            <div id="move-tutors"></div>
-          </aside>
+        <div class="move-list" id="move-list"></div>
+      </section>
+
+      <section class="guide-view" id="view-tutors" data-view-panel="tutors">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Battle Frontier</p>
+            <h1>Move Tutors</h1>
+          </div>
+          <p id="tutor-result-count">Showing tutors</p>
         </div>
+        <div class="move-list" id="move-tutors"></div>
       </section>
 
       <section class="guide-view" id="view-items" data-view-panel="items">
@@ -238,14 +252,14 @@
           </label>
         </div>
         <div class="split-grid">
-          <section>
-            <h2>Mega Stones</h2>
+          <details class="collapsible-panel">
+            <summary><h2>Mega Stones</h2></summary>
             <div class="item-card-grid" id="mega-grid"></div>
-          </section>
-          <section>
-            <h2>Z-Crystals</h2>
+          </details>
+          <details class="collapsible-panel">
+            <summary><h2>Z-Crystals</h2></summary>
             <div class="item-card-grid" id="z-grid"></div>
-          </section>
+          </details>
         </div>
       </section>
 
@@ -268,5 +282,19 @@
         documentation with separate Unbound data and storage keys.
       </p>
     </footer>
+    <dialog id="move-popup" class="move-popup">
+      <form method="dialog" class="move-popup__frame">
+        <header class="move-popup__header">
+          <div>
+            <p class="eyebrow" id="move-popup-context">Move details</p>
+            <h2 id="move-popup-title">Moves</h2>
+          </div>
+          <button class="icon-button" type="submit" aria-label="Close move popup">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19" /></svg>
+          </button>
+        </header>
+        <div class="move-popup__body" id="move-popup-body"></div>
+      </form>
+    </dialog>
   </body>
 </html>

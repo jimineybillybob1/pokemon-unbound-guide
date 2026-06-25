@@ -25,6 +25,7 @@ FETCHED_ABILITIES_FILE = FETCHED_REPO_DIR / "abilities.txt"
 FETCHED_ABILITY_NAMES_FILE = FETCHED_REPO_DIR / "ability_names.txt"
 FETCHED_ABILITY_DESCRIPTIONS_FILE = FETCHED_REPO_DIR / "ability_descriptions.txt"
 FETCHED_DUPLICATE_ABILITIES_FILE = FETCHED_REPO_DIR / "duplicate_abilities.json"
+TM_COMPATIBILITY_DIR = FETCHED_REPO_DIR / "tm_compatibility"
 
 BASE_STATS_FILE = DOCS_DIR / "Base_Stats.txt"
 EVOLUTION_FILE = DOCS_DIR / "Evolution Table.txt"
@@ -486,6 +487,11 @@ def resolve_item_icon(
     item_type: str = "",
     machine_kind: str = "",
 ) -> str:
+    if machine_kind and item_type:
+        typed_path = f"assets/items/{machine_kind}/{asset_slug(item_type)}.png"
+        if (ROOT_DIR / typed_path).exists():
+            return typed_path
+
     slug = asset_slug(name)
     candidates = [slug, f"{slug}--bag", f"{slug}--held"]
     if machine_kind and item_type:
@@ -722,6 +728,7 @@ def parse_base_stats() -> dict[str, dict]:
             },
             "levelUpLearnset": [],
             "eggMoves": [],
+            "tmHmMoves": [],
             "evolutions": [],
             "locations": [],
         }
@@ -1277,6 +1284,35 @@ def attach_source_data(
             pokemon[species]["evolutions"] = edges
 
 
+def attach_tm_hm_compatibility(pokemon: dict[str, dict], move_metadata: dict[str, dict]) -> None:
+    if not TM_COMPATIBILITY_DIR.exists():
+        return
+
+    for path in sorted(TM_COMPATIBILITY_DIR.glob("*.txt")):
+        lines = read_optional_text(path).splitlines()
+        if not lines:
+            continue
+        header = clean(lines[0]).replace("\x05", "")
+        match = re.match(r"(TM|HM)\s*(\d+):\s*(.+)$", header)
+        if not match:
+            continue
+        machine_kind, number, move_name = match.groups()
+        move_name = parse_source_string(move_name)
+        metadata = move_metadata.get(normalize_key(move_name), {})
+        move_entry = {
+            "number": f"{machine_kind}{int(number)}",
+            "move": move_name,
+            "type": metadata.get("type", ""),
+        }
+        for line in lines[1:]:
+            species_name = clean(line)
+            if not species_name:
+                continue
+            constant = f"SPECIES_{species_name}"
+            if constant in pokemon:
+                pokemon[constant]["tmHmMoves"].append(dict(move_entry))
+
+
 def collect_move_data(
     pokemon: dict[str, dict],
     move_hints: dict[str, str],
@@ -1424,6 +1460,7 @@ def build_data() -> dict:
     move_hints = {**location_move_hints, **frontier_move_hints}
 
     attach_source_data(pokemon, learnsets, egg_moves, evolutions)
+    attach_tm_hm_compatibility(pokemon, reference_metadata["moves"])
     unmatched_location_species = attach_locations(pokemon, location_data)
     asset_counts = attach_asset_paths(pokemon, location_data)
     moves = collect_move_data(pokemon, move_hints, reference_metadata["moves"], reference_metadata["moveNames"])

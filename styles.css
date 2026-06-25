@@ -4,6 +4,13 @@
   font-display: swap;
 }
 
+.caught-button--compact {
+  position: static;
+  justify-content: center;
+  min-width: 86px;
+  font-size: 0.7rem;
+}
+
 :root {
   color-scheme: light;
   --bg: #f7f4ec;
@@ -443,6 +450,11 @@ select {
   font-size: 1rem;
 }
 
+.pokemon-font-title {
+  font-family: var(--font-ui) !important;
+  letter-spacing: 0.02em;
+}
+
 .pokemon-card h2 {
   overflow-wrap: anywhere;
   font-size: 1.36rem;
@@ -460,6 +472,10 @@ select {
   font-weight: 700;
   background: var(--surface-2);
   color: var(--muted);
+}
+
+.pill-button {
+  border: 0;
 }
 
 .type-row,
@@ -801,6 +817,68 @@ select {
   gap: 6px;
 }
 
+.location-pokemon-list {
+  display: grid;
+  gap: 8px;
+}
+
+.location-pokemon-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.location-pokemon-row.is-caught {
+  border-color: rgba(66, 167, 127, 0.55);
+  background: rgba(66, 167, 127, 0.08);
+}
+
+.location-pokemon-row__identity,
+.location-pokemon-row__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.location-pokemon-row__toggle,
+.caught-row__toggle {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
+
+.location-pokemon-row__copy {
+  display: grid;
+  gap: 4px;
+}
+
+.location-pokemon-row__copy strong {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.location-pokemon-row__sprite {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+}
+
+.location-pokemon-row__sprite img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
 .data-section {
   margin-top: 24px;
 }
@@ -848,17 +926,21 @@ select {
 .caught-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   min-height: 56px;
+  width: 100%;
   padding: 6px 10px;
+  color: var(--text);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+  text-align: left;
 }
 
-.caught-row input {
-  width: 18px;
-  min-height: 18px;
+.caught-row.is-caught {
+  border-color: rgba(66, 167, 127, 0.55);
+  background: rgba(66, 167, 127, 0.08);
 }
 
 .caught-row__identity {
@@ -969,6 +1051,116 @@ th {
 .item-card-grid {
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   margin-top: 10px;
+}
+
+.collapsible-panel {
+  align-self: start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.collapsible-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsible-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-panel summary::after {
+  color: var(--muted);
+  content: "+";
+  font-size: 1.2rem;
+}
+
+.collapsible-panel[open] summary::after {
+  content: "-";
+}
+
+.collapsible-panel .item-card-grid {
+  padding: 0 14px 14px;
+  margin-top: 0;
+}
+
+.move-popup {
+  width: min(900px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.move-popup::backdrop {
+  background: rgba(18, 16, 34, 0.72);
+}
+
+.move-popup__frame {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.move-popup__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.move-popup__header h2 {
+  margin: 4px 0 0;
+  font-family: var(--font-ui);
+}
+
+.move-popup__body {
+  display: grid;
+  gap: 10px;
+  max-height: min(65vh, 720px);
+  overflow: auto;
+}
+
+.move-popup-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.move-popup-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.move-popup-card__title {
+  display: grid;
+  gap: 4px;
+}
+
+.move-popup-card__title h3 {
+  margin: 0;
+}
+
+.move-popup-card__title p {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-readable);
+  font-size: 0.82rem;
 }
 
 .item-card {

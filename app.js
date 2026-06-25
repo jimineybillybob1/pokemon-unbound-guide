@@ -89,11 +89,13 @@ const elements = {
   caughtSummary: document.querySelector("#caught-summary"),
   caughtProgress: document.querySelector("#caught-progress"),
   caughtSearch: document.querySelector("#caught-search"),
+  caughtFilter: document.querySelector("#caught-filter"),
   caughtList: document.querySelector("#caught-list"),
   moveSearch: document.querySelector("#move-search"),
   moveSourceFilter: document.querySelector("#move-source-filter"),
   moveList: document.querySelector("#move-list"),
   moveResultCount: document.querySelector("#move-result-count"),
+  tutorResultCount: document.querySelector("#tutor-result-count"),
   moveTutors: document.querySelector("#move-tutors"),
   itemSearch: document.querySelector("#item-search"),
   itemTableFilter: document.querySelector("#item-table-filter"),
@@ -106,6 +108,10 @@ const elements = {
   teamSummary: document.querySelector("#team-summary"),
   teamGrid: document.querySelector("#team-grid"),
   teamPokemonOptions: document.querySelector("#team-pokemon-options"),
+  movePopup: document.querySelector("#move-popup"),
+  movePopupContext: document.querySelector("#move-popup-context"),
+  movePopupTitle: document.querySelector("#move-popup-title"),
+  movePopupBody: document.querySelector("#move-popup-body"),
 };
 
 const state = {
@@ -113,6 +119,7 @@ const state = {
   dexLimit: 96,
   caught: new Set(readJson(storageKeys.caught, [])),
   team: normalizeTeam(readJson(storageKeys.team, [])),
+  caughtFilter: "all",
 };
 
 function readJson(key, fallback) {
@@ -164,6 +171,22 @@ function saveTeam() {
   writeJson(storageKeys.team, state.team);
 }
 
+function caughtCount() {
+  return pokemon.filter((entry) => state.caught.has(entry.constant)).length;
+}
+
+function isCaught(constant) {
+  return state.caught.has(constant);
+}
+
+function toggleCaught(constant) {
+  if (!constant) return;
+  if (state.caught.has(constant)) state.caught.delete(constant);
+  else state.caught.add(constant);
+  saveCaught();
+  renderAll();
+}
+
 function createElement(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -182,6 +205,15 @@ function typeBadge(type) {
 
 function pill(text) {
   return createElement("span", "pill", text);
+}
+
+function pillButton(text, dataset = {}) {
+  const button = createElement("button", "pill pill-button", text);
+  button.type = "button";
+  Object.entries(dataset).forEach(([key, value]) => {
+    button.dataset[key] = value;
+  });
+  return button;
 }
 
 function imageNode(src, alt, width = 64, height = 64) {
@@ -207,6 +239,21 @@ function itemIcon(item, className = "item-icon") {
   const icon = createElement("span", className);
   icon.append(imageNode(item?.icon, item?.name || item?.item || "", 44, 44));
   return icon;
+}
+
+function caughtToggleButton(constant, compact = false) {
+  const button = createElement(
+    "button",
+    `caught-button${compact ? " caught-button--compact" : ""}`,
+    isCaught(constant) ? "Caught" : "Catch",
+  );
+  button.type = "button";
+  button.dataset.toggleCaught = constant;
+  button.setAttribute("aria-pressed", isCaught(constant) ? "true" : "false");
+  const ball = createElement("span", "caught-button__ball");
+  ball.setAttribute("aria-hidden", "true");
+  button.prepend(ball);
+  return button;
 }
 
 function statsNode(stats, bst, markers = {}) {
@@ -318,18 +365,7 @@ function renderEvolutionNav(entry) {
 function renderPokemonCard(entry) {
   const card = createElement("article", `pokemon-card ${state.caught.has(entry.constant) ? "is-caught" : ""}`);
   card.dataset.pokemonCard = entry.constant;
-
-  const caughtButton = createElement(
-    "button",
-    "caught-button",
-    state.caught.has(entry.constant) ? "Caught" : "Mark caught",
-  );
-  caughtButton.type = "button";
-  caughtButton.dataset.toggleCaught = entry.constant;
-  const ball = createElement("span", "caught-button__ball");
-  ball.setAttribute("aria-hidden", "true");
-  caughtButton.prepend(ball);
-  card.append(caughtButton);
+  card.append(caughtToggleButton(entry.constant));
 
   const identity = createElement("div", "pokemon-card__identity");
   identity.append(spriteWell(entry));
@@ -362,8 +398,28 @@ function renderPokemonCard(entry) {
   card.append(statsNode(entry.stats, entry.bst));
 
   const detailRow = createElement("div", "pill-row");
-  detailRow.append(pill(`${entry.levelUpLearnset.length} level moves`));
-  if (entry.eggMoves.length) detailRow.append(pill(`${entry.eggMoves.length} egg moves`));
+  detailRow.append(
+    pillButton(`${entry.levelUpLearnset.length} level moves`, {
+      openMovePopup: entry.constant,
+      moveGroup: "levelUp",
+    }),
+  );
+  if (entry.eggMoves.length) {
+    detailRow.append(
+      pillButton(`${entry.eggMoves.length} egg moves`, {
+        openMovePopup: entry.constant,
+        moveGroup: "egg",
+      }),
+    );
+  }
+  if (entry.tmHmMoves?.length) {
+    detailRow.append(
+      pillButton(`${entry.tmHmMoves.length} TM/HM moves`, {
+        openMovePopup: entry.constant,
+        moveGroup: "tmHm",
+      }),
+    );
+  }
   if (entry.locations.length) detailRow.append(pill(`${entry.locations.length} locations`));
   if (entry.evolutions.length) detailRow.append(pill(`${entry.evolutions.length} evolutions`));
   card.append(detailRow);
@@ -429,16 +485,41 @@ function filteredLocations() {
     });
 }
 
+function locationPokemonEntry(name) {
+  return pokemonBySearchName.get(normalize(name));
+}
+
+function renderLocationPokemonRow(name) {
+  const entry = locationPokemonEntry(name);
+  const row = createElement("div", `location-pokemon-row${entry && isCaught(entry.constant) ? " is-caught" : ""}`);
+  const identity = createElement("button", "location-pokemon-row__identity location-pokemon-row__toggle");
+  identity.type = "button";
+  if (entry) identity.dataset.toggleCaught = entry.constant;
+  if (entry) identity.append(spriteWell(entry, "location-pokemon-row__sprite", 40));
+  else identity.append(spriteWell(null, "location-pokemon-row__sprite", 40));
+  const copy = createElement("span", "location-pokemon-row__copy");
+  copy.append(createElement("strong", "", name));
+  if (entry?.types?.length) copy.append(renderTypeRow(entry.types));
+  identity.append(copy);
+  row.append(identity);
+
+  const meta = createElement("span", "location-pokemon-row__meta");
+  meta.append(pill(`Catch ${entry?.catchRate ?? "-"}`));
+  if (entry) meta.append(caughtToggleButton(entry.constant, true));
+  row.append(meta);
+  return row;
+}
+
 function renderLocationCard(location) {
   const card = createElement("article", "location-card");
   const header = createElement("header");
-  header.append(createElement("h2", "", location.name), pill(`${location.methods.length} methods`));
+  header.append(createElement("h2", "", location.name));
   card.append(header);
   for (const method of location.methods) {
     const block = createElement("section", "method-block");
     block.append(createElement("h3", "", `${method.label} (${method.species.length})`));
-    const list = createElement("div", "species-list");
-    method.species.forEach((name) => list.append(pill(name)));
+    const list = createElement("div", "location-pokemon-list");
+    method.species.forEach((name) => list.append(renderLocationPokemonRow(name)));
     block.append(list);
     card.append(block);
   }
@@ -518,29 +599,31 @@ function caughtFilteredPokemon() {
     includePlaceholders: false,
     type: "all",
     location: "all",
+  }).filter((entry) => {
+    if (state.caughtFilter === "caught") return isCaught(entry.constant);
+    if (state.caughtFilter === "uncaught") return !isCaught(entry.constant);
+    return true;
   });
 }
 
 function renderCaught() {
   const list = caughtFilteredPokemon();
-  const caughtCount = pokemon.filter((entry) => state.caught.has(entry.constant)).length;
-  const percent = pokemon.length ? Math.round((caughtCount / pokemon.length) * 100) : 0;
-  elements.caughtSummary.textContent = `${caughtCount} of ${pokemon.length} caught`;
+  const currentCaughtCount = caughtCount();
+  const percent = pokemon.length ? Math.round((currentCaughtCount / pokemon.length) * 100) : 0;
+  elements.caughtSummary.textContent = `${currentCaughtCount} of ${pokemon.length} caught`;
   elements.caughtProgress.style.width = `${percent}%`;
 
   const fragment = document.createDocumentFragment();
   list.forEach((entry) => {
-    const row = createElement("label", "caught-row");
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = state.caught.has(entry.constant);
-    checkbox.dataset.caughtCheckbox = entry.constant;
-    const identity = createElement("span", "caught-row__identity");
+    const row = createElement("div", `caught-row${isCaught(entry.constant) ? " is-caught" : ""}`);
+    const identity = createElement("button", "caught-row__identity caught-row__toggle");
+    identity.type = "button";
+    identity.dataset.toggleCaught = entry.constant;
     identity.append(spriteWell(entry, "caught-row__sprite", 38));
     const copy = createElement("span", "caught-row__copy");
     copy.append(createElement("small", "", `#${entry.guideNumber}`), createElement("strong", "", entry.name));
     identity.append(copy);
-    row.append(checkbox, identity);
+    row.append(identity, caughtToggleButton(entry.constant, true));
     fragment.append(row);
   });
   elements.caughtList.replaceChildren(fragment);
@@ -560,18 +643,92 @@ function renderLearners(title, learners) {
   return group;
 }
 
+function renderMovePopupEntries(entries, emptyText = "No moves available.") {
+  const fragment = document.createDocumentFragment();
+  if (!entries.length) {
+    fragment.append(emptyState(emptyText));
+    return fragment;
+  }
+  entries.forEach((entry) => {
+    const card = createElement("article", "move-popup-card");
+    const header = createElement("div", "move-popup-card__header");
+    const copy = createElement("div", "move-popup-card__title");
+    copy.append(createElement("h3", "pokemon-font-title", entry.label || entry.move));
+    if (entry.detail) copy.append(createElement("p", "", entry.detail));
+    header.append(copy);
+    const badge = entry.move ? caughtMoveTypeBadge(entry.move) : null;
+    if (badge) header.append(badge);
+    card.append(header);
+    if (entry.move) card.append(moveDetailsNode(entry.move));
+    fragment.append(card);
+  });
+  return fragment;
+}
+
+function caughtMoveTypeBadge(moveName) {
+  const metadata = moveMetadataByName.get(normalize(moveName));
+  return metadata?.type ? typeBadge(metadata.type) : null;
+}
+
+function openMovePopup(title, context, entries, emptyText) {
+  elements.movePopupTitle.textContent = title;
+  elements.movePopupContext.textContent = context;
+  elements.movePopupBody.replaceChildren(renderMovePopupEntries(entries, emptyText));
+  if (typeof elements.movePopup.showModal === "function") elements.movePopup.showModal();
+  else elements.movePopup.setAttribute("open", "open");
+}
+
+function openPokemonMovePopup(constant, group) {
+  const entry = pokemonByConstant.get(constant);
+  if (!entry) return;
+  if (group === "levelUp") {
+    openMovePopup(
+      entry.name,
+      "Level-up moves",
+      entry.levelUpLearnset.map((move) => ({
+        move: move.move,
+        label: move.move,
+        detail: `Level ${move.level}`,
+      })),
+      "No level-up moves were found.",
+    );
+    return;
+  }
+  if (group === "egg") {
+    openMovePopup(
+      entry.name,
+      "Egg moves",
+      entry.eggMoves.map((move) => ({
+        move: move.move,
+        label: move.move,
+      })),
+      "No egg moves were found.",
+    );
+    return;
+  }
+  if (group === "tmHm") {
+    openMovePopup(
+      entry.name,
+      "TM / HM moves",
+      (entry.tmHmMoves || []).map((move) => ({
+        move: move.move,
+        label: move.move,
+        detail: `${move.number}${move.type ? ` - ${move.type}` : ""}`,
+      })),
+      "No TM/HM compatibility was found.",
+    );
+  }
+}
+
 function filteredMoves() {
   const query = elements.moveSearch.value.trim().toLowerCase();
   const source = elements.moveSourceFilter.value;
   return guideData.moves.filter((move) => {
-    const isTutor = moveTutorNames.has(normalize(move.name));
     if (source === "levelUp" && !move.learners.levelUp.length) return false;
     if (source === "egg" && !move.learners.egg.length) return false;
-    if (source === "tutor" && !isTutor) return false;
     if (!query) return true;
     const text = [
       move.name,
-      move.constant,
       ...move.learners.levelUp.map((learner) => learner.name),
       ...move.learners.egg.map((learner) => learner.name),
     ]
@@ -586,7 +743,7 @@ function renderMoveCard(move) {
   details.className = "move-card";
   const summary = document.createElement("summary");
   const title = createElement("div");
-  title.append(createElement("h2", "", move.name), createElement("p", "", move.constant));
+  title.append(createElement("h2", "pokemon-font-title", move.name));
   const counts = createElement("div", "pill-row");
   counts.append(pill(`${move.learners.levelUp.length} level`));
   if (move.learners.egg.length) counts.append(pill(`${move.learners.egg.length} egg`));
@@ -614,13 +771,14 @@ function renderMoveTutors() {
   const fragment = document.createDocumentFragment();
   guideData.frontier.moveTutors.forEach((tutor) => {
     const card = createElement("section", "tutor-card");
-    card.append(createElement("h3", "", tutor.name), createElement("p", "", `${tutor.location} | ${tutor.availability}`));
+    card.append(createElement("h3", "pokemon-font-title", tutor.name), createElement("p", "", `${tutor.location} | ${tutor.availability}`));
     const moves = createElement("div", "pill-row");
     tutor.moves.forEach((move) => moves.append(pill(`${move.move}${move.cost ? ` (${move.cost})` : ""}`)));
     card.append(moves);
     fragment.append(card);
   });
   elements.moveTutors.replaceChildren(fragment);
+  elements.tutorResultCount.textContent = `Showing ${guideData.frontier.moveTutors.length} tutors`;
 }
 
 function itemRowsForTable() {
@@ -907,9 +1065,9 @@ function renderTeamCard(slot, index) {
 }
 
 function updateOverview() {
-  const caughtCount = pokemon.filter((entry) => state.caught.has(entry.constant)).length;
+  const currentCaughtCount = caughtCount();
   elements.countPokemon.textContent = String(pokemon.length);
-  elements.countCaught.textContent = String(caughtCount);
+  elements.countCaught.textContent = String(currentCaughtCount);
   elements.countCaughtTotal.textContent = String(pokemon.length);
   elements.countLocations.textContent = String(guideData.locations.length);
   elements.countMoves.textContent = String(guideData.moves.length);
@@ -991,6 +1149,10 @@ function bindEvents() {
   elements.locationSearch.addEventListener("input", renderLocations);
   elements.methodFilter.addEventListener("change", renderLocations);
   elements.caughtSearch.addEventListener("input", renderCaught);
+  elements.caughtFilter.addEventListener("change", () => {
+    state.caughtFilter = elements.caughtFilter.value;
+    renderCaught();
+  });
   elements.moveSearch.addEventListener("input", renderMoves);
   elements.moveSourceFilter.addEventListener("change", renderMoves);
   elements.itemSearch.addEventListener("input", renderItemTable);
@@ -1012,18 +1174,6 @@ function bindEvents() {
     renderAll();
   });
 
-  document.querySelector("#mark-visible-caught").addEventListener("click", () => {
-    caughtFilteredPokemon().forEach((entry) => state.caught.add(entry.constant));
-    saveCaught();
-    renderAll();
-  });
-
-  document.querySelector("#clear-visible-caught").addEventListener("click", () => {
-    caughtFilteredPokemon().forEach((entry) => state.caught.delete(entry.constant));
-    saveCaught();
-    renderAll();
-  });
-
   document.querySelector("#clear-team").addEventListener("click", () => {
     state.team = normalizeTeam([]);
     saveTeam();
@@ -1038,26 +1188,19 @@ function bindEvents() {
       return;
     }
 
+    const popupButton = event.target.closest("[data-open-move-popup]");
+    if (popupButton) {
+      openPokemonMovePopup(popupButton.dataset.openMovePopup, popupButton.dataset.moveGroup);
+      return;
+    }
+
     const caughtButton = event.target.closest("[data-toggle-caught]");
     if (caughtButton) {
-      const constant = caughtButton.dataset.toggleCaught;
-      if (state.caught.has(constant)) state.caught.delete(constant);
-      else state.caught.add(constant);
-      saveCaught();
-      renderAll();
+      toggleCaught(caughtButton.dataset.toggleCaught);
     }
   });
 
   document.addEventListener("change", (event) => {
-    const checkbox = event.target.closest("[data-caught-checkbox]");
-    if (checkbox) {
-      if (checkbox.checked) state.caught.add(checkbox.dataset.caughtCheckbox);
-      else state.caught.delete(checkbox.dataset.caughtCheckbox);
-      saveCaught();
-      updateOverview();
-      renderCaught();
-    }
-
     const speciesSearch = event.target.closest("[data-team-species-search]");
     if (speciesSearch) {
       const index = Number(speciesSearch.dataset.teamSpeciesSearch);
@@ -1128,6 +1271,7 @@ function bindEvents() {
   });
 }
 
+elements.caughtFilter.value = state.caughtFilter;
 populateFilters();
 bindEvents();
 renderAll();

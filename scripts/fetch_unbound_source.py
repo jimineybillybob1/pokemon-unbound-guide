@@ -19,6 +19,7 @@ import requests
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DOCS_DIR = ROOT_DIR / "documentation" / "fetched-from-repo"
+GITHUB_API_ROOT = "https://api.github.com/repos/Skeli789/Dynamic-Pokemon-Expansion/contents"
 
 # Repository sources
 CFRU_REPO = "https://raw.githubusercontent.com/Skeli789/Complete-Fire-Red-Upgrade/master"
@@ -56,6 +57,17 @@ def fetch_url(url: str, timeout: int = 10) -> str:
     except requests.RequestException as e:
         print(f"[fail] Failed to fetch {url}: {e}")
         return ""
+
+
+def fetch_json(url: str, timeout: int = 10) -> Any:
+    """Fetch JSON from a URL with error handling."""
+    try:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        print(f"[fail] Failed to fetch {url}: {e}")
+        return None
 
 
 def save_file(path: Path, content: str) -> None:
@@ -96,6 +108,27 @@ def fetch_all_sources() -> dict[str, str]:
             print("[fail]")
 
     return sources
+
+
+def fetch_compatibility_directory(directory: str) -> dict[str, str]:
+    """Fetch all files from a compatibility directory in the Unbound branch."""
+    url = f"{GITHUB_API_ROOT}/{directory}?ref=Unbound"
+    listing = fetch_json(url)
+    if not isinstance(listing, list):
+        return {}
+
+    files: dict[str, str] = {}
+    for entry in listing:
+        if not isinstance(entry, dict) or entry.get("type") != "file":
+            continue
+        download_url = entry.get("download_url")
+        name = entry.get("name")
+        if not download_url or not name:
+            continue
+        content = fetch_url(download_url)
+        if content:
+            files[f"{directory}/{name}"] = content
+    return files
 
 
 def extract_species_constants(text: str) -> dict[str, int]:
@@ -156,6 +189,20 @@ def main() -> None:
         else:
             ext = "txt"
         save_file(DOCS_DIR / f"{name}.{ext}", content)
+
+    compatibility_dirs = {
+        "src/tm_compatibility": "tm_compatibility",
+        "src/tutor_compatibility": "tutor_compatibility",
+    }
+    for repo_dir, local_dir in compatibility_dirs.items():
+        print(f"Fetching {local_dir} files...", end=" ", flush=True)
+        files = fetch_compatibility_directory(repo_dir)
+        if files:
+            print(f"[ok] ({len(files)})")
+            for relative_name, content in files.items():
+                save_file(DOCS_DIR / relative_name.removeprefix("src/"), content)
+        else:
+            print("[fail]")
 
     # Create and save index
     index = index_sources(sources)
