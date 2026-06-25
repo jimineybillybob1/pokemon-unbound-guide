@@ -475,22 +475,36 @@ function isCaught(constant) {
   return state.caught.has(constant);
 }
 
+function refreshVisibleCaughtState(constant) {
+  const caught = isCaught(constant);
+  document.querySelectorAll(`[data-toggle-caught="${constant}"]`).forEach((node) => {
+    if (!(node instanceof HTMLElement)) return;
+    const row = node.closest(".location-pokemon-row, .caught-row, .pokemon-card");
+    if (row) row.classList.toggle("is-caught", caught);
+    if (node.tagName !== "BUTTON" || !node.classList.contains("caught-button")) return;
+    node.setAttribute("aria-pressed", caught ? "true" : "false");
+    const label = caught ? "Caught" : "Catch";
+    const ball = node.querySelector(".caught-button__ball") || createElement("span", "caught-button__ball");
+    if (!ball.hasAttribute("aria-hidden")) ball.setAttribute("aria-hidden", "true");
+    node.replaceChildren(ball, document.createTextNode(label));
+  });
+}
+
 function toggleCaught(constant) {
   if (!constant) return;
-  const scrollY = window.scrollY;
   if (state.caught.has(constant)) state.caught.delete(constant);
   else state.caught.add(constant);
   saveCaught();
   updateOverview();
   updateSaveSummary();
-  if (state.view === "dex") renderDex();
-  else if (state.view === "locations") renderLocations();
-  else if (state.view === "caught") renderCaught();
-  else if (state.view === "team") renderTeam();
-  else if (state.view === "battle") renderBattlePlanner();
-  window.requestAnimationFrame(() => {
-    window.scrollTo(0, scrollY);
-  });
+  refreshVisibleCaughtState(constant);
+  if (state.view === "caught") {
+    const scrollY = window.scrollY;
+    renderCaught();
+    window.requestAnimationFrame(() => {
+      window.scrollTo(0, scrollY);
+    });
+  }
 }
 
 function createElement(tag, className, text) {
