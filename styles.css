@@ -1616,7 +1616,7 @@ select {
 
 .location-card {
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   background:
     linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(245, 242, 255, 0.84)),
     var(--surface);
@@ -1654,7 +1654,7 @@ select {
 
 .location-map-meta {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   margin-top: 10px;
 }
@@ -1701,6 +1701,7 @@ select {
 }
 
 .location-meta-section {
+  overflow: hidden;
   min-width: 0;
   padding: 10px 12px;
   border: 1px solid rgba(127, 99, 224, 0.18);
@@ -1733,6 +1734,7 @@ select {
 
 .location-reference-table {
   width: 100%;
+  max-width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -1754,6 +1756,7 @@ select {
 
 .location-reference-table td {
   min-width: 0;
+  max-width: 0;
 }
 
 [data-theme="dark"] .location-reference-table th,
