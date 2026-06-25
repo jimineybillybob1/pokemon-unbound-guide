@@ -483,7 +483,7 @@ label span,
 
 .overview-team-slot {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-columns: 78px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   padding: 10px;
@@ -499,14 +499,14 @@ label span,
 }
 
 .overview-team-slot__sprite {
-  width: 70px;
-  height: 70px;
+  width: 84px;
+  height: 84px;
   border-radius: 12px;
 }
 
 .overview-team-slot__sprite img {
-  width: 62px;
-  height: 62px;
+  width: 76px;
+  height: 76px;
 }
 
 .overview-team-slot__copy {
@@ -573,7 +573,7 @@ label span,
 .view-tabs {
   position: static;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   padding: 8px 0 16px;
   background: transparent;
@@ -603,11 +603,12 @@ label span,
 }
 
 .view-tab span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.82rem;
-  line-height: 1.15;
+  overflow: visible;
+  text-overflow: initial;
+  white-space: normal;
+  word-break: break-word;
+  font-size: 0.75rem;
+  line-height: 1.08;
   font-weight: 800;
 }
 
@@ -1606,8 +1607,41 @@ select {
   text-decoration: none;
 }
 
-.location-meta-section {
+.location-map-meta {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(0, 1fr);
+  gap: 12px;
   margin-top: 10px;
+}
+
+.location-map-pane {
+  display: grid;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.location-map-pane strong {
+  font-size: 0.84rem;
+}
+
+.location-map-pane img {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.location-map-meta__details {
+  display: grid;
+  gap: 10px;
+}
+
+.location-meta-section {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1624,6 +1658,24 @@ select {
   padding-left: 18px;
   display: grid;
   gap: 4px;
+}
+
+.location-reference-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.location-reference-table th,
+.location-reference-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.location-reference-table th {
+  width: 44px;
+  font-size: 0.76rem;
 }
 
 .method-block {
@@ -2413,6 +2465,10 @@ th {
   .caught-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .location-map-meta {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -2432,6 +2488,20 @@ th {
 
   .overview-top-row {
     grid-template-columns: 1fr;
+  }
+
+  .overview-team-slot {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .overview-team-slot__sprite {
+    width: 72px;
+    height: 72px;
+  }
+
+  .overview-team-slot__sprite img {
+    width: 64px;
+    height: 64px;
   }
 
   .app-header {

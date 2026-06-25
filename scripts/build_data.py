@@ -1365,6 +1365,26 @@ def load_unboundwiki_locations() -> list[dict]:
         exits = [clean(item) for item in entry.get("exits", []) if clean(item)]
         points = [clean(item) for item in entry.get("pointsOfInterest", []) if clean(item)]
         item_locations = [clean(item) for item in entry.get("itemLocations", []) if clean(item)]
+        def normalize_rows(raw_rows: object) -> list[dict]:
+            rows: list[dict] = []
+            if not isinstance(raw_rows, list):
+                return rows
+            for row in raw_rows:
+                if not isinstance(row, dict):
+                    continue
+                ref = clean(row.get("ref"))
+                columns_raw = row.get("columns")
+                if not isinstance(columns_raw, list):
+                    continue
+                columns = [clean(item) for item in columns_raw if clean(item)]
+                if not columns:
+                    continue
+                rows.append({"ref": ref, "columns": columns})
+            return rows
+
+        points_rows = normalize_rows(entry.get("pointsOfInterestRows"))
+        exits_rows = normalize_rows(entry.get("exitsRows"))
+        item_rows = normalize_rows(entry.get("itemLocationRows"))
         records.append(
             {
                 "name": name,
@@ -1375,6 +1395,9 @@ def load_unboundwiki_locations() -> list[dict]:
                 "exits": exits,
                 "pointsOfInterest": points,
                 "itemLocations": item_locations,
+                "exitsRows": exits_rows,
+                "pointsOfInterestRows": points_rows,
+                "itemLocationRows": item_rows,
                 "source": clean(entry.get("source")) or "UnboundWiki",
             }
         )
@@ -1404,6 +1427,21 @@ def merge_unboundwiki_locations(location_records: list[dict], wiki_locations: li
         location["exits"] = [clean(item) for item in wiki.get("exits", []) if clean(item)]
         location["pointsOfInterest"] = [clean(item) for item in wiki.get("pointsOfInterest", []) if clean(item)]
         location["itemLocations"] = [clean(item) for item in wiki.get("itemLocations", []) if clean(item)]
+        location["exitsRows"] = [
+            {"ref": clean(row.get("ref")), "columns": [clean(col) for col in row.get("columns", []) if clean(col)]}
+            for row in wiki.get("exitsRows", [])
+            if isinstance(row, dict)
+        ]
+        location["pointsOfInterestRows"] = [
+            {"ref": clean(row.get("ref")), "columns": [clean(col) for col in row.get("columns", []) if clean(col)]}
+            for row in wiki.get("pointsOfInterestRows", [])
+            if isinstance(row, dict)
+        ]
+        location["itemLocationRows"] = [
+            {"ref": clean(row.get("ref")), "columns": [clean(col) for col in row.get("columns", []) if clean(col)]}
+            for row in wiki.get("itemLocationRows", [])
+            if isinstance(row, dict)
+        ]
 
     location_records.sort(key=lambda item: clean(item.get("name")))
     return location_records

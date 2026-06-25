@@ -825,6 +825,9 @@ function filteredLocations() {
         ...(location.exits || []),
         ...(location.pointsOfInterest || []),
         ...(location.itemLocations || []),
+        ...((location.exitsRows || []).flatMap((row) => [row.ref, ...(row.columns || [])])),
+        ...((location.pointsOfInterestRows || []).flatMap((row) => [row.ref, ...(row.columns || [])])),
+        ...((location.itemLocationRows || []).flatMap((row) => [row.ref, ...(row.columns || [])])),
       ]
         .join(" ")
         .toLowerCase();
@@ -885,21 +888,62 @@ function renderLocationCard(location) {
   if (actions.childNodes.length) header.append(actions);
   card.append(header);
 
-  const appendMetadataSection = (title, items) => {
-    if (!Array.isArray(items) || !items.length) return;
-    const section = createElement("section", "location-meta-section");
-    section.append(createElement("h3", "", title));
-    const list = createElement("ul", "location-meta-list");
-    items.slice(0, 24).forEach((item) => {
-      list.append(createElement("li", "", item));
-    });
-    section.append(list);
-    card.append(section);
+  const mapPreviewUrl = (mapUrl) => {
+    if (!mapUrl) return "";
+    return mapUrl.replace("-fullsize", "");
   };
 
-  appendMetadataSection("Points of interest", location.pointsOfInterest);
-  appendMetadataSection("Exits", location.exits);
-  appendMetadataSection("Item locations", location.itemLocations);
+  const buildMetadataSection = (title, items, rows = []) => {
+    const rowData = Array.isArray(rows) ? rows.filter((row) => Array.isArray(row.columns) && row.columns.length) : [];
+    if (!Array.isArray(items) || (!items.length && !rowData.length)) return null;
+    const section = createElement("section", "location-meta-section");
+    section.append(createElement("h3", "", title));
+    if (rowData.length) {
+      const table = createElement("table", "location-reference-table");
+      const body = document.createElement("tbody");
+      rowData.slice(0, 40).forEach((row) => {
+        const tr = document.createElement("tr");
+        const refCell = document.createElement("th");
+        refCell.textContent = row.ref || "-";
+        const detailCell = document.createElement("td");
+        detailCell.textContent = row.columns.join(" • ");
+        tr.append(refCell, detailCell);
+        body.append(tr);
+      });
+      table.append(body);
+      section.append(table);
+    } else {
+      const list = createElement("ul", "location-meta-list");
+      items.slice(0, 24).forEach((item) => {
+        list.append(createElement("li", "", item));
+      });
+      section.append(list);
+    }
+    return section;
+  };
+
+  const mapAndMeta = createElement("section", "location-map-meta");
+  if (location.mapUrl) {
+    const mapPane = createElement("a", "location-map-pane");
+    mapPane.href = location.mapUrl;
+    mapPane.target = "_blank";
+    mapPane.rel = "noopener noreferrer";
+    mapPane.append(createElement("strong", "", "Map preview"));
+    mapPane.append(imageNode(mapPreviewUrl(location.mapUrl), `${location.name} map`, 640, 380));
+    mapAndMeta.append(mapPane);
+  }
+
+  const metadataPane = createElement("div", "location-map-meta__details");
+  const appendToMetadataPane = (title, items, rows) => {
+    const section = buildMetadataSection(title, items, rows);
+    if (section) metadataPane.append(section);
+  };
+
+  appendToMetadataPane("Points of interest", location.pointsOfInterest, location.pointsOfInterestRows);
+  appendToMetadataPane("Exits", location.exits, location.exitsRows);
+  appendToMetadataPane("Item locations", location.itemLocations, location.itemLocationRows);
+  if (metadataPane.childNodes.length) mapAndMeta.append(metadataPane);
+  if (mapAndMeta.childNodes.length) card.append(mapAndMeta);
 
   if (!location.methods.length) {
     card.append(emptyState("No wild encounter records for this location in the current guide data."));

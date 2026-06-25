@@ -153,6 +153,59 @@ def extract_html_section_lines(content_html: str, headings: tuple[str, ...]) -> 
     return extracted
 
 
+def extract_html_sections(content_html: str, headings: tuple[str, ...]) -> list[str]:
+    heading_pattern = re.compile(r"<h([23])[^>]*>(.*?)</h\1>", re.IGNORECASE | re.DOTALL)
+    heading_matches = list(heading_pattern.finditer(content_html))
+    sections: list[str] = []
+    for index, match in enumerate(heading_matches):
+        heading_text = clean(unescape(strip_html_tags(match.group(2)))).lower()
+        if not any(token in heading_text for token in headings):
+            continue
+        start = match.end()
+        end = heading_matches[index + 1].start() if index + 1 < len(heading_matches) else len(content_html)
+        sections.append(content_html[start:end])
+    return sections
+
+
+def parse_html_table_rows(section_html: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    table_pattern = re.compile(r"<table\b[^>]*>(.*?)</table>", re.IGNORECASE | re.DOTALL)
+    row_pattern = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
+    cell_pattern = re.compile(r"<t[hd]\b[^>]*>(.*?)</t[hd]>", re.IGNORECASE | re.DOTALL)
+
+    auto_ref = 1
+    for table_html in table_pattern.findall(section_html):
+        for row_html in row_pattern.findall(table_html):
+            cells = []
+            for cell_html in cell_pattern.findall(row_html):
+                value = clean(unescape(strip_html_tags(cell_html)))
+                if value:
+                    cells.append(value)
+            if not cells:
+                continue
+            lowered = [cell.lower() for cell in cells]
+            if lowered == ["item", "details", "image"] or lowered == ["item", "location", "image"]:
+                continue
+            if len(cells) == 1 and cells[0].lower() == "image":
+                continue
+            first = cells[0]
+            marker_match = re.match(r"^#?\s*(\d+)\.?$", first)
+            marker = marker_match.group(1) if marker_match else str(auto_ref)
+            auto_ref += 1
+            rows.append({"ref": marker, "columns": cells})
+    return rows
+
+
+def parse_section_reference_rows(content_html: str, headings: tuple[str, ...]) -> list[dict[str, object]]:
+    structured: list[dict[str, object]] = []
+    for section_html in extract_html_sections(content_html, headings):
+        structured.extend(parse_html_table_rows(section_html))
+    if not structured:
+        fallback_lines = extract_html_section_lines(content_html, headings)
+        structured = [{"ref": "", "columns": [line]} for line in fallback_lines]
+    return structured
+
+
 def extract_unboundwiki_map_url(content_html: str, slug: str) -> str:
     fullsize_match = re.search(r'href="([^"]*map[^"]*fullsize[^"]*)"', content_html, flags=re.IGNORECASE)
     if fullsize_match:
@@ -201,6 +254,9 @@ def fetch_unboundwiki_locations() -> list[dict[str, object]]:
             "exits": linked_locations if isinstance(linked_locations, list) else [],
             "pointsOfInterest": [],
             "itemLocations": [],
+            "exitsRows": [],
+            "pointsOfInterestRows": [],
+            "itemLocationRows": [],
             "source": "UnboundWiki",
         }
         if slug:
@@ -215,12 +271,21 @@ def fetch_unboundwiki_locations() -> list[dict[str, object]]:
                     record["pageUrl"] = clean(post["link"])
                 if content_html:
                     record["mapUrl"] = extract_unboundwiki_map_url(content_html, slug)
-                    record["itemLocations"] = extract_html_section_lines(content_html, ("item locations",))
-                    points = extract_html_section_lines(content_html, ("notable locations", "points of interest"))
-                    record["pointsOfInterest"] = points
-                    exits = extract_html_section_lines(content_html, ("exits",))
-                    if exits:
-                        record["exits"] = exits
+                    record["itemLocationRows"] = parse_section_reference_rows(content_html, ("item locations",))
+                    record["pointsOfInterestRows"] = parse_section_reference_rows(
+                        content_html, ("notable locations", "points of interest")
+                    )
+                    exits_rows = parse_section_reference_rows(content_html, ("exits",))
+                    if exits_rows:
+                        record["exitsRows"] = exits_rows
+
+                    # Flat strings are still included for backward compatibility.
+                    record["itemLocations"] = [row["columns"][-1] for row in record.get("itemLocationRows", []) if row.get("columns")]
+                    record["pointsOfInterest"] = [
+                        row["columns"][-1] for row in record.get("pointsOfInterestRows", []) if row.get("columns")
+                    ]
+                    if record.get("exitsRows"):
+                        record["exits"] = [row["columns"][-1] for row in record["exitsRows"] if row.get("columns")]
         output.append(record)
     return output
 
