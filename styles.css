@@ -507,6 +507,19 @@ label span,
 .overview-team-slot__sprite img {
   width: 76px;
   height: 76px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.overview-team-slot__sprite.has-entry img {
+  width: 84px;
+  height: 84px;
+  transform: scale(1.14);
+  transform-origin: center;
+}
+
+.overview-team-slot__sprite.is-placeholder img {
+  transform: none;
 }
 
 .overview-team-slot__copy {
@@ -2502,6 +2515,12 @@ th {
   .overview-team-slot__sprite img {
     width: 64px;
     height: 64px;
+  }
+
+  .overview-team-slot__sprite.has-entry img {
+    width: 72px;
+    height: 72px;
+    transform: scale(1.1);
   }
 
   .app-header {

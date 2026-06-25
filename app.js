@@ -1743,7 +1743,10 @@ function updateOverview() {
   const teamFragment = document.createDocumentFragment();
   selectedTeam.forEach(({ slot, entry }, index) => {
     const item = createElement("div", `overview-team-slot${entry ? "" : " is-empty"}`);
-    item.append(entry ? spriteWell(entry, "overview-team-slot__sprite", 64) : spriteWell(null, "overview-team-slot__sprite", 64));
+    const sprite = entry
+      ? spriteWell(entry, "overview-team-slot__sprite has-entry", 96)
+      : spriteWell(null, "overview-team-slot__sprite is-placeholder", 96);
+    item.append(sprite);
     const copy = createElement("span", "overview-team-slot__copy");
     copy.append(createElement("strong", "", teamDisplayName(slot, entry)));
     copy.append(createElement("small", "", entry ? `Slot ${index + 1}` : "Empty slot"));
