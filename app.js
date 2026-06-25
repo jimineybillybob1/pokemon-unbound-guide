@@ -477,10 +477,20 @@ function isCaught(constant) {
 
 function toggleCaught(constant) {
   if (!constant) return;
+  const scrollY = window.scrollY;
   if (state.caught.has(constant)) state.caught.delete(constant);
   else state.caught.add(constant);
   saveCaught();
-  renderAll();
+  updateOverview();
+  updateSaveSummary();
+  if (state.view === "dex") renderDex();
+  else if (state.view === "locations") renderLocations();
+  else if (state.view === "caught") renderCaught();
+  else if (state.view === "team") renderTeam();
+  else if (state.view === "battle") renderBattlePlanner();
+  window.requestAnimationFrame(() => {
+    window.scrollTo(0, scrollY);
+  });
 }
 
 function createElement(tag, className, text) {
