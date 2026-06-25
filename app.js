@@ -144,7 +144,6 @@ const elements = {
   dexLoadMore: document.querySelector("#dex-load-more"),
   typeQuickFilters: document.querySelector("#type-quick-filters"),
   locationSearch: document.querySelector("#location-search"),
-  methodFilter: document.querySelector("#method-filter"),
   locationGrid: document.querySelector("#location-grid"),
   locationResultCount: document.querySelector("#location-result-count"),
   specialEncounters: document.querySelector("#special-encounters"),
@@ -803,10 +802,9 @@ function focusDexPokemon(constant) {
 
 function filteredLocations() {
   const query = elements.locationSearch.value.trim().toLowerCase();
-  const method = elements.methodFilter.value;
   return guideData.locations
     .map((location) => {
-      const methods = location.methods.filter((item) => method === "all" || item.label === method);
+      const methods = location.methods;
       const hasWikiMetadata = Boolean(
         location.mapUrl ||
           location.pageUrl ||
@@ -817,7 +815,6 @@ function filteredLocations() {
       return { ...location, methods, hasWikiMetadata };
     })
     .filter((location) => {
-      if (!location.methods.length && method !== "all") return false;
       if (!location.methods.length && !location.hasWikiMetadata) return false;
       const text = [
         location.name,
@@ -2304,13 +2301,6 @@ function populateFilters() {
   elements.locationFilter.replaceChildren(
     ...locations.map((location) => new Option(location === "all" ? "All locations" : location, location)),
   );
-
-  const methods = ["all", ...new Set(guideData.locations.flatMap((location) => location.methods.map((method) => method.label)))].sort(
-    (a, b) => (a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b)),
-  );
-  elements.methodFilter.replaceChildren(
-    ...methods.map((method) => new Option(method === "all" ? "All methods" : method, method)),
-  );
   renderDexQuickFilters();
   renderCaughtQuickFilters();
 }
@@ -2356,9 +2346,6 @@ function bindEvents() {
   });
 
   elements.locationSearch.addEventListener("input", () => {
-    renderLocations();
-  });
-  elements.methodFilter.addEventListener("change", () => {
     renderLocations();
   });
   elements.caughtSearch.addEventListener("input", () => {
