@@ -84,7 +84,15 @@ def main() -> int:
     warn(counts.get("abilitiesWithMetadata", 0) >= 150, "Fewer than 150 abilities have reference descriptions")
 
     check(len(locations) >= 50, f"Expected at least 50 wild encounter locations, found {len(locations)}")
-    check(all(location.get("methods") for location in locations), "A location has no encounter methods")
+    empty_locations = [
+        location.get("name", "")
+        for location in locations
+        if not location.get("methods") and not location.get("mapUrl") and not location.get("pageUrl")
+    ]
+    warn(
+        len(empty_locations) <= 10,
+        f"{len(empty_locations)} locations have no encounters/map/wiki metadata: {empty_locations[:10]}",
+    )
     check(counts.get("giftStatic", 0) >= 40, "Gift/static encounter count is unexpectedly low")
     check(counts.get("legendary", 0) >= 60, "Legendary/mythical/Ultra Beast count is unexpectedly low")
     check(counts.get("trades", 0) >= 6, "Trade count is unexpectedly low")

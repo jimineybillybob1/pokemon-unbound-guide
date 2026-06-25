@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+from html import unescape
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,7 @@ DUPLICATE_ABILITIES_URL = "https://raw.githubusercontent.com/ydarissep/Unbound-P
 TYPE_CHART_URL = "https://raw.githubusercontent.com/ydarissep/Unbound-Pokedex/main/src/typeChart.json"
 ENCOUNTERS_URL = "https://raw.githubusercontent.com/ydarissep/Unbound-Pokedex/main/src/locations/encounters.json"
 TUTOR_FLAGS_URL = "https://raw.githubusercontent.com/ydarissep/Unbound-Pokedex/main/src/moves/tutor_flags.json"
+UNBOUND_WIKI_API = "https://unboundwiki.com/wp-json/wp/v2/wiki"
 
 
 def fetch_url(url: str, timeout: int = 10) -> str:
@@ -77,6 +79,150 @@ def save_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     print(f"[ok] Saved {path.relative_to(ROOT_DIR)}")
+
+
+def strip_html_tags(html: str) -> str:
+    return re.sub(r"<[^>]+>", " ", html)
+
+
+def html_to_lines(html: str) -> list[str]:
+    if not html:
+        return []
+    text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
+    text = re.sub(r"</(p|li|tr|h2|h3|h4|div|table|section)>", "\n", text, flags=re.IGNORECASE)
+    text = unescape(strip_html_tags(text)).replace("\xa0", " ")
+    seen: set[str] = set()
+    lines: list[str] = []
+    for raw in text.splitlines():
+        line = re.sub(r"\s+", " ", raw).strip(" \t-:|")
+        if not line:
+            continue
+        if line in {"Back to", "Back to:", "(Click for full-size)", "Click for full-size"}:
+            continue
+        if line in seen:
+            continue
+        seen.add(line)
+        lines.append(line)
+    return lines
+
+
+def parse_unboundwiki_index_rows(index_html: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    row_pattern = re.compile(
+        r"<tr>\s*<td><strong>(.*?)</strong></td>\s*<td>(.*?)</td>\s*<td>.*?</td>\s*</tr>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    link_pattern = re.compile(
+        r'href="https://unboundwiki\.com/locations/([^"/]+)/"',
+        re.IGNORECASE,
+    )
+    for match in row_pattern.finditer(index_html):
+        name_cell, linked_cell = match.groups()
+        link_match = link_pattern.search(name_cell)
+        slug = clean(link_match.group(1)) if link_match else ""
+        name = clean(unescape(strip_html_tags(name_cell)))
+        linked_locations = html_to_lines(linked_cell)
+        if not name:
+            continue
+        rows.append(
+            {
+                "name": name,
+                "slug": slug,
+                "pageUrl": f"https://unboundwiki.com/locations/{slug}/" if slug else "",
+                "linkedLocations": linked_locations,
+            }
+        )
+    return rows
+
+
+def clean(value: object) -> str:
+    return re.sub(r"\s+", " ", str(value or "").replace("\xa0", " ")).strip()
+
+
+def extract_html_section_lines(content_html: str, headings: tuple[str, ...]) -> list[str]:
+    heading_pattern = re.compile(r"<h([23])[^>]*>(.*?)</h\1>", re.IGNORECASE | re.DOTALL)
+    heading_matches = list(heading_pattern.finditer(content_html))
+    extracted: list[str] = []
+    for index, match in enumerate(heading_matches):
+        heading_text = clean(unescape(strip_html_tags(match.group(2)))).lower()
+        if not any(token in heading_text for token in headings):
+            continue
+        start = match.end()
+        end = heading_matches[index + 1].start() if index + 1 < len(heading_matches) else len(content_html)
+        extracted.extend(html_to_lines(content_html[start:end]))
+    return extracted
+
+
+def extract_unboundwiki_map_url(content_html: str, slug: str) -> str:
+    fullsize_match = re.search(r'href="([^"]*map[^"]*fullsize[^"]*)"', content_html, flags=re.IGNORECASE)
+    if fullsize_match:
+        return clean(unescape(fullsize_match.group(1)))
+    slug_pattern = re.escape(slug)
+    image_match = re.search(
+        rf'src="([^"]*/locations/{slug_pattern}/[^"]*map[^"]*\.(?:jpg|jpeg|png|webp))"',
+        content_html,
+        flags=re.IGNORECASE,
+    )
+    if image_match:
+        return clean(unescape(image_match.group(1)))
+    return ""
+
+
+def fetch_unboundwiki_locations() -> list[dict[str, object]]:
+    index_posts = fetch_json(f"{UNBOUND_WIKI_API}?slug=locations", timeout=20)
+    if not isinstance(index_posts, list) or not index_posts:
+        print("[fail] Failed to fetch UnboundWiki location index")
+        return []
+
+    index_html = (
+        index_posts[0].get("content", {}).get("rendered", "")
+        if isinstance(index_posts[0], dict)
+        else ""
+    )
+    if not index_html:
+        print("[fail] UnboundWiki location index content was empty")
+        return []
+
+    index_rows = parse_unboundwiki_index_rows(index_html)
+    if not index_rows:
+        print("[fail] Could not parse UnboundWiki location rows")
+        return []
+
+    output: list[dict[str, object]] = []
+    for row in index_rows:
+        slug = clean(row.get("slug"))
+        linked_locations = row.get("linkedLocations", [])
+        record: dict[str, object] = {
+            "name": row.get("name", ""),
+            "slug": slug,
+            "pageUrl": row.get("pageUrl", ""),
+            "mapUrl": "",
+            "linkedLocations": linked_locations if isinstance(linked_locations, list) else [],
+            "exits": linked_locations if isinstance(linked_locations, list) else [],
+            "pointsOfInterest": [],
+            "itemLocations": [],
+            "source": "UnboundWiki",
+        }
+        if slug:
+            posts = fetch_json(f"{UNBOUND_WIKI_API}?slug={slug}", timeout=20)
+            if isinstance(posts, list) and posts and isinstance(posts[0], dict):
+                post = posts[0]
+                content_html = post.get("content", {}).get("rendered", "")
+                title_rendered = post.get("title", {}).get("rendered", "")
+                if title_rendered:
+                    record["name"] = clean(unescape(strip_html_tags(title_rendered)))
+                if post.get("link"):
+                    record["pageUrl"] = clean(post["link"])
+                if content_html:
+                    record["mapUrl"] = extract_unboundwiki_map_url(content_html, slug)
+                    record["itemLocations"] = extract_html_section_lines(content_html, ("item locations",))
+                    points = extract_html_section_lines(content_html, ("notable locations", "points of interest"))
+                    record["pointsOfInterest"] = points
+                    exits = extract_html_section_lines(content_html, ("exits",))
+                    if exits:
+                        record["exits"] = exits
+        output.append(record)
+    return output
 
 
 def fetch_all_sources() -> dict[str, str]:
@@ -191,6 +337,14 @@ def main() -> None:
         else:
             ext = "txt"
         save_file(DOCS_DIR / f"{name}.{ext}", content)
+
+    print("Fetching UnboundWiki location metadata...", end=" ", flush=True)
+    wiki_locations = fetch_unboundwiki_locations()
+    if wiki_locations:
+        save_file(DOCS_DIR / "unboundwiki_locations.json", json.dumps(wiki_locations, indent=2, ensure_ascii=False) + "\n")
+        print(f"[ok] ({len(wiki_locations)})")
+    else:
+        print("[fail]")
 
     compatibility_dirs = {
         "src/tm_compatibility": "tm_compatibility",

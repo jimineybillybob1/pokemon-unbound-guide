@@ -18,6 +18,7 @@ POKEMON_ASSETS_DIR = ASSETS_DIR / "pokemon"
 ITEM_ASSETS_DIR = ASSETS_DIR / "items"
 UNBOUND_POKEDEX_ENCOUNTERS_FILE = FETCHED_REPO_DIR / "encounters.json"
 UNBOUND_POKEDEX_WILD_SOURCE = "Unbound-Pokedex encounters.json"
+UNBOUND_WIKI_LOCATIONS_FILE = FETCHED_REPO_DIR / "unboundwiki_locations.json"
 FETCHED_MOVES_FILE = FETCHED_REPO_DIR / "moves.txt"
 FETCHED_MOVE_NAMES_FILE = FETCHED_REPO_DIR / "move_names.txt"
 FETCHED_MOVE_DESCRIPTIONS_FILE = FETCHED_REPO_DIR / "move_descriptions.txt"
@@ -1347,6 +1348,67 @@ def parse_unbound_pokedex_wild_locations(pokemon: dict[str, dict]) -> list[dict]
     return records
 
 
+def load_unboundwiki_locations() -> list[dict]:
+    payload = read_json_file(UNBOUND_WIKI_LOCATIONS_FILE)
+    if not isinstance(payload, list):
+        return []
+
+    records = []
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        name = clean(entry.get("name"))
+        if not name:
+            continue
+        map_url = clean(entry.get("mapUrl"))
+        page_url = clean(entry.get("pageUrl"))
+        exits = [clean(item) for item in entry.get("exits", []) if clean(item)]
+        points = [clean(item) for item in entry.get("pointsOfInterest", []) if clean(item)]
+        item_locations = [clean(item) for item in entry.get("itemLocations", []) if clean(item)]
+        records.append(
+            {
+                "name": name,
+                "slug": clean(entry.get("slug")),
+                "pageUrl": page_url,
+                "mapUrl": map_url,
+                "linkedLocations": [clean(item) for item in entry.get("linkedLocations", []) if clean(item)],
+                "exits": exits,
+                "pointsOfInterest": points,
+                "itemLocations": item_locations,
+                "source": clean(entry.get("source")) or "UnboundWiki",
+            }
+        )
+    return records
+
+
+def merge_unboundwiki_locations(location_records: list[dict], wiki_locations: list[dict]) -> list[dict]:
+    by_name: dict[str, dict] = {normalize_key(location.get("name")): location for location in location_records}
+
+    for wiki in wiki_locations:
+        key = normalize_key(wiki.get("name"))
+        if not key:
+            continue
+        location = by_name.get(key)
+        if not location:
+            location = {
+                "name": wiki.get("name"),
+                "methods": [],
+            }
+            location_records.append(location)
+            by_name[key] = location
+        location["mapUrl"] = clean(wiki.get("mapUrl"))
+        location["pageUrl"] = clean(wiki.get("pageUrl"))
+        location["wikiSlug"] = clean(wiki.get("slug"))
+        location["wikiSource"] = clean(wiki.get("source")) or "UnboundWiki"
+        location["linkedLocations"] = [clean(item) for item in wiki.get("linkedLocations", []) if clean(item)]
+        location["exits"] = [clean(item) for item in wiki.get("exits", []) if clean(item)]
+        location["pointsOfInterest"] = [clean(item) for item in wiki.get("pointsOfInterest", []) if clean(item)]
+        location["itemLocations"] = [clean(item) for item in wiki.get("itemLocations", []) if clean(item)]
+
+    location_records.sort(key=lambda item: clean(item.get("name")))
+    return location_records
+
+
 def parse_frontier_workbook() -> tuple[dict, dict[str, str]]:
     path = find_workbook("Frontier Documentation")
     workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -1566,6 +1628,10 @@ def build_data() -> dict:
     if unbound_pokedex_locations:
         location_data["locations"] = unbound_pokedex_locations
         location_data["source"] = f'{location_data["source"]} + {UNBOUND_POKEDEX_ENCOUNTERS_FILE.name}'
+    wiki_locations = load_unboundwiki_locations()
+    if wiki_locations:
+        location_data["locations"] = merge_unboundwiki_locations(location_data["locations"], wiki_locations)
+        location_data["source"] = f'{location_data["source"]} + {UNBOUND_WIKI_LOCATIONS_FILE.name}'
     frontier_data, frontier_move_hints = parse_frontier_workbook()
     reference_metadata = load_reference_metadata()
     move_hints = {**location_move_hints, **frontier_move_hints}

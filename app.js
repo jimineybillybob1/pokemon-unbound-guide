@@ -807,13 +807,24 @@ function filteredLocations() {
   return guideData.locations
     .map((location) => {
       const methods = location.methods.filter((item) => method === "all" || item.label === method);
-      return { ...location, methods };
+      const hasWikiMetadata = Boolean(
+        location.mapUrl ||
+          location.pageUrl ||
+          location.exits?.length ||
+          location.pointsOfInterest?.length ||
+          location.itemLocations?.length,
+      );
+      return { ...location, methods, hasWikiMetadata };
     })
     .filter((location) => {
-      if (!location.methods.length) return false;
+      if (!location.methods.length && method !== "all") return false;
+      if (!location.methods.length && !location.hasWikiMetadata) return false;
       const text = [
         location.name,
         ...location.methods.flatMap((methodItem) => [methodItem.label, ...locationMethodEntries(methodItem).map((entry) => entry.species)]),
+        ...(location.exits || []),
+        ...(location.pointsOfInterest || []),
+        ...(location.itemLocations || []),
       ]
         .join(" ")
         .toLowerCase();
@@ -856,7 +867,45 @@ function renderLocationCard(location) {
   const card = createElement("article", "location-card");
   const header = createElement("header");
   header.append(createElement("h2", "", location.name));
+  const actions = createElement("div", "location-card__actions");
+  if (location.mapUrl) {
+    const mapButton = createElement("a", "text-button location-card__action", "Open Map");
+    mapButton.href = location.mapUrl;
+    mapButton.target = "_blank";
+    mapButton.rel = "noopener noreferrer";
+    actions.append(mapButton);
+  }
+  if (location.pageUrl) {
+    const wikiButton = createElement("a", "text-button location-card__action", "Wiki Page");
+    wikiButton.href = location.pageUrl;
+    wikiButton.target = "_blank";
+    wikiButton.rel = "noopener noreferrer";
+    actions.append(wikiButton);
+  }
+  if (actions.childNodes.length) header.append(actions);
   card.append(header);
+
+  const appendMetadataSection = (title, items) => {
+    if (!Array.isArray(items) || !items.length) return;
+    const section = createElement("section", "location-meta-section");
+    section.append(createElement("h3", "", title));
+    const list = createElement("ul", "location-meta-list");
+    items.slice(0, 24).forEach((item) => {
+      list.append(createElement("li", "", item));
+    });
+    section.append(list);
+    card.append(section);
+  };
+
+  appendMetadataSection("Points of interest", location.pointsOfInterest);
+  appendMetadataSection("Exits", location.exits);
+  appendMetadataSection("Item locations", location.itemLocations);
+
+  if (!location.methods.length) {
+    card.append(emptyState("No wild encounter records for this location in the current guide data."));
+    return card;
+  }
+
   for (const method of location.methods) {
     const block = createElement("section", "method-block");
     const encounters = locationMethodEntries(method);

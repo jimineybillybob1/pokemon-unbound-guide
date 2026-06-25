@@ -1596,6 +1596,36 @@ select {
   justify-content: center;
 }
 
+.location-card__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.location-card__action {
+  text-decoration: none;
+}
+
+.location-meta-section {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.location-meta-section h3 {
+  margin: 0 0 6px;
+  font-size: 0.86rem;
+}
+
+.location-meta-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
 .method-block {
   margin-top: 12px;
   padding-top: 10px;
