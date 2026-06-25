@@ -233,13 +233,18 @@ def parse_html_table_rows(section_html: str, section_key: str) -> list[dict[str,
             first_text = str(cells[0].get("text", ""))
             marker_match = re.match(r"^#?\s*(\d+)\.?$", first_text)
             marker = marker_match.group(1) if marker_match else ""
+            marker_icon = ""
             if not marker:
                 first_cell_images = cells[0].get("images", [])
                 if isinstance(first_cell_images, list):
                     for image_url in first_cell_images:
+                        if not marker_icon:
+                            marker_icon = clean(str(image_url))
                         marker = extract_marker_from_image_url(str(image_url), section_key)
                         if marker:
                             break
+            elif isinstance(cells[0].get("images", []), list) and cells[0].get("images"):
+                marker_icon = clean(str(cells[0]["images"][0]))
 
             image_link = ""
             last_cell = cells[-1]
@@ -252,6 +257,8 @@ def parse_html_table_rows(section_html: str, section_key: str) -> list[dict[str,
                     image_link = clean(images[0])
 
             row: dict[str, object] = {"ref": marker, "columns": columns}
+            if marker_icon:
+                row["markerIcon"] = marker_icon
             if image_link:
                 row["imageLink"] = image_link
             rows.append(row)

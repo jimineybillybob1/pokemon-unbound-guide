@@ -1380,6 +1380,9 @@ def load_unboundwiki_locations() -> list[dict]:
                 if not columns:
                     continue
                 normalized = {"ref": ref, "columns": columns}
+                marker_icon = clean(row.get("markerIcon"))
+                if marker_icon:
+                    normalized["markerIcon"] = marker_icon
                 image_link = clean(row.get("imageLink"))
                 if image_link:
                     normalized["imageLink"] = image_link
@@ -1435,6 +1438,7 @@ def merge_unboundwiki_locations(location_records: list[dict], wiki_locations: li
             {
                 "ref": clean(row.get("ref")),
                 "columns": [clean(col) for col in row.get("columns", []) if clean(col)],
+                **({"markerIcon": clean(row.get("markerIcon"))} if clean(row.get("markerIcon")) else {}),
                 **({"imageLink": clean(row.get("imageLink"))} if clean(row.get("imageLink")) else {}),
             }
             for row in wiki.get("exitsRows", [])
@@ -1444,6 +1448,7 @@ def merge_unboundwiki_locations(location_records: list[dict], wiki_locations: li
             {
                 "ref": clean(row.get("ref")),
                 "columns": [clean(col) for col in row.get("columns", []) if clean(col)],
+                **({"markerIcon": clean(row.get("markerIcon"))} if clean(row.get("markerIcon")) else {}),
                 **({"imageLink": clean(row.get("imageLink"))} if clean(row.get("imageLink")) else {}),
             }
             for row in wiki.get("pointsOfInterestRows", [])
@@ -1453,6 +1458,7 @@ def merge_unboundwiki_locations(location_records: list[dict], wiki_locations: li
             {
                 "ref": clean(row.get("ref")),
                 "columns": [clean(col) for col in row.get("columns", []) if clean(col)],
+                **({"markerIcon": clean(row.get("markerIcon"))} if clean(row.get("markerIcon")) else {}),
                 **({"imageLink": clean(row.get("imageLink"))} if clean(row.get("imageLink")) else {}),
             }
             for row in wiki.get("itemLocationRows", [])

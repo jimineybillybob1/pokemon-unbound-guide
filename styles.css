@@ -1693,8 +1693,31 @@ select {
 }
 
 .location-reference-table th {
-  width: 44px;
+  width: 56px;
   font-size: 0.76rem;
+}
+
+.location-marker-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.location-item-name {
+  display: block;
+  font-size: 0.88rem;
+}
+
+.location-item-detail {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+.location-item-actions {
+  margin-top: 4px;
 }
 
 .location-image-link {

@@ -901,24 +901,36 @@ function renderLocationCard(location) {
     if (rowData.length) {
       const table = createElement("table", "location-reference-table");
       const body = document.createElement("tbody");
-      const hasRef = rowData.some((row) => String(row.ref || "").trim().length);
+      const hasRef = rowData.some((row) => String(row.ref || "").trim().length || row.markerIcon);
       rowData.slice(0, 40).forEach((row) => {
         const tr = document.createElement("tr");
         if (hasRef) {
           const refCell = document.createElement("th");
-          refCell.textContent = row.ref || "";
+          if (row.markerIcon) {
+            const icon = imageNode(row.markerIcon, row.ref || "Map marker", 24, 24);
+            icon.classList.add("location-marker-icon");
+            refCell.append(icon);
+          } else {
+            refCell.textContent = row.ref || "";
+          }
           tr.append(refCell);
         }
         const detailCell = document.createElement("td");
-        const text = row.columns.join(" • ");
-        detailCell.append(document.createTextNode(text));
         if (title === "Item locations" && row.imageLink) {
-          detailCell.append(document.createTextNode(" "));
+          const itemName = row.columns[0] || "Item";
+          const description = row.columns.slice(1).join(" • ");
+          detailCell.append(createElement("strong", "location-item-name", itemName));
+          if (description) detailCell.append(createElement("div", "location-item-detail", description));
+          const actions = createElement("div", "location-item-actions");
           const imageLink = createElement("button", "location-image-link", "View image");
           imageLink.type = "button";
           imageLink.dataset.openLocationImage = row.imageLink;
-          imageLink.dataset.locationImageLabel = row.columns[0] || "Item location";
-          detailCell.append(imageLink);
+          imageLink.dataset.locationImageLabel = itemName;
+          actions.append(imageLink);
+          detailCell.append(actions);
+        } else {
+          const text = row.columns.join(" • ");
+          detailCell.append(document.createTextNode(text));
         }
         tr.append(detailCell);
         body.append(tr);
