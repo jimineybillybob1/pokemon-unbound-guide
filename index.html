@@ -130,6 +130,10 @@
           <img class="view-tab__icon-sprite" src="assets/items/custom/friend-ball.png" alt="" width="30" height="30" />
           <span>Team Builder</span>
         </button>
+        <button class="view-tab" type="button" data-view="battle">
+          <img class="view-tab__icon-sprite" src="assets/items/key-item/vs-seeker.png" alt="" width="30" height="30" />
+          <span>Battle Planner</span>
+        </button>
         <button class="view-tab" type="button" data-view="save">
           <img class="view-tab__icon-sprite" src="assets/items/key-item/style-card.png" alt="" width="30" height="30" />
           <span>Save &amp; Sync</span>
@@ -323,6 +327,29 @@
         </div>
         <div class="team-summary" id="team-summary"></div>
         <div class="team-grid" id="team-grid"></div>
+      </section>
+
+      <section class="guide-view" id="view-battle" data-view-panel="battle">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Matchup helper</p>
+            <h1>Battle Planner</h1>
+          </div>
+          <p id="battle-summary">Pick up to 2 opponents to see team recommendations.</p>
+        </div>
+        <div class="toolbar battle-planner-toolbar">
+          <label class="battle-opponent-field">
+            <span>Opponent 1</span>
+            <input id="battle-opponent-1" data-battle-opponent-search="0" type="search" placeholder="Search Pokemon" autocomplete="off" />
+            <div class="team-species-suggestions" data-battle-opponent-suggestions="0" hidden></div>
+          </label>
+          <label class="battle-opponent-field">
+            <span>Opponent 2</span>
+            <input id="battle-opponent-2" data-battle-opponent-search="1" type="search" placeholder="Search Pokemon" autocomplete="off" />
+            <div class="team-species-suggestions" data-battle-opponent-suggestions="1" hidden></div>
+          </label>
+        </div>
+        <div class="battle-suggestions" id="battle-suggestions"></div>
       </section>
 
       <section class="guide-view" id="view-save" data-view-panel="save">

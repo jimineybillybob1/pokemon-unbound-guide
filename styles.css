@@ -483,7 +483,7 @@ label span,
 
 .overview-team-slot {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 64px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   padding: 10px;
@@ -499,14 +499,14 @@ label span,
 }
 
 .overview-team-slot__sprite {
-  width: 54px;
-  height: 54px;
+  width: 70px;
+  height: 70px;
   border-radius: 12px;
 }
 
 .overview-team-slot__sprite img {
-  width: 44px;
-  height: 44px;
+  width: 62px;
+  height: 62px;
 }
 
 .overview-team-slot__copy {
@@ -2090,13 +2090,15 @@ th {
   display: grid;
   gap: 5px;
   margin-top: 6px;
+  position: relative;
+  z-index: 8;
 }
 
 .team-species-suggestion {
   width: 100%;
   text-align: left;
-  border: 1px solid rgba(117, 91, 213, 0.2);
-  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(117, 91, 213, 0.24);
+  background: color-mix(in srgb, var(--surface) 88%, white 12%);
   color: var(--text);
   border-radius: 999px;
   padding: 6px 10px;
@@ -2107,9 +2109,13 @@ th {
 
 .team-species-suggestion:hover,
 .team-species-suggestion:focus-visible {
-  border-color: rgba(117, 91, 213, 0.5);
-  background: rgba(117, 91, 213, 0.12);
+  border-color: rgba(117, 91, 213, 0.62);
+  background: color-mix(in srgb, var(--accent-2) 32%, var(--surface) 68%);
   outline: none;
+}
+
+.battle-opponent-field {
+  position: relative;
 }
 
 .team-evolution-actions {
@@ -2148,6 +2154,83 @@ th {
 .team-move-slot {
   display: grid;
   gap: 6px;
+}
+
+.battle-planner-toolbar {
+  margin-bottom: 14px;
+}
+
+.battle-suggestions {
+  display: grid;
+  gap: 12px;
+}
+
+.battle-suggestion-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, var(--bubble-top), transparent 52%),
+    linear-gradient(135deg, var(--bubble-wash), transparent 64%),
+    var(--surface);
+  border: 1px solid var(--bubble-line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.battle-suggestion-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.battle-suggestion-card__sprite {
+  width: 64px;
+  height: 64px;
+}
+
+.battle-suggestion-card h3 {
+  margin: 2px 0 0;
+  font-family: var(--font-ui);
+  font-size: 1.16rem;
+  line-height: 1.08;
+}
+
+.battle-coverage-list {
+  display: grid;
+  gap: 7px;
+}
+
+.battle-coverage-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(117, 91, 213, 0.14);
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.battle-coverage-row strong {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.battle-warning,
+.battle-safe {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.battle-warning {
+  color: color-mix(in srgb, #d44949 70%, var(--text));
+}
+
+.battle-safe {
+  color: color-mix(in srgb, #3fa369 70%, var(--text));
 }
 
 .metadata-card {
@@ -2226,6 +2309,18 @@ th {
 [data-theme="dark"] .view-tab,
 [data-theme="dark"] .mini-button {
   background: rgba(48, 42, 82, 0.88);
+}
+
+[data-theme="dark"] .team-species-suggestion {
+  background: rgba(23, 19, 45, 0.96);
+  color: #f5f2ff;
+  border-color: rgba(190, 172, 255, 0.34);
+}
+
+[data-theme="dark"] .team-species-suggestion:hover,
+[data-theme="dark"] .team-species-suggestion:focus-visible {
+  background: rgba(96, 76, 181, 0.54);
+  border-color: rgba(203, 186, 255, 0.75);
 }
 
 [data-theme="dark"] th {

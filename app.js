@@ -78,6 +78,49 @@ const moveTutorNames = new Set(
   guideData.frontier.moveTutors.flatMap((tutor) => tutor.moves.map((move) => normalize(move.move))),
 );
 const TOTAL_BADGES = 8;
+const typeChart = {
+  Normal: { Rock: 0.5, Ghost: 0, Steel: 0.5 },
+  Fire: { Fire: 0.5, Water: 0.5, Grass: 2, Ice: 2, Bug: 2, Rock: 0.5, Dragon: 0.5, Steel: 2 },
+  Water: { Fire: 2, Water: 0.5, Grass: 0.5, Ground: 2, Rock: 2, Dragon: 0.5 },
+  Electric: { Water: 2, Electric: 0.5, Grass: 0.5, Ground: 0, Flying: 2, Dragon: 0.5 },
+  Grass: {
+    Fire: 0.5,
+    Water: 2,
+    Grass: 0.5,
+    Poison: 0.5,
+    Ground: 2,
+    Flying: 0.5,
+    Bug: 0.5,
+    Rock: 2,
+    Dragon: 0.5,
+    Steel: 0.5,
+  },
+  Ice: { Fire: 0.5, Water: 0.5, Grass: 2, Ice: 0.5, Ground: 2, Flying: 2, Dragon: 2, Steel: 0.5 },
+  Fighting: {
+    Normal: 2,
+    Ice: 2,
+    Poison: 0.5,
+    Flying: 0.5,
+    Psychic: 0.5,
+    Bug: 0.5,
+    Rock: 2,
+    Ghost: 0,
+    Dark: 2,
+    Steel: 2,
+    Fairy: 0.5,
+  },
+  Poison: { Grass: 2, Poison: 0.5, Ground: 0.5, Rock: 0.5, Ghost: 0.5, Steel: 0, Fairy: 2 },
+  Ground: { Fire: 2, Electric: 2, Grass: 0.5, Poison: 2, Flying: 0, Bug: 0.5, Rock: 2, Steel: 2 },
+  Flying: { Electric: 0.5, Grass: 2, Fighting: 2, Bug: 2, Rock: 0.5, Steel: 0.5 },
+  Psychic: { Fighting: 2, Poison: 2, Psychic: 0.5, Dark: 0, Steel: 0.5 },
+  Bug: { Fire: 0.5, Grass: 2, Fighting: 0.5, Poison: 0.5, Flying: 0.5, Psychic: 2, Ghost: 0.5, Dark: 2, Steel: 0.5, Fairy: 0.5 },
+  Rock: { Fire: 2, Ice: 2, Fighting: 0.5, Ground: 0.5, Flying: 2, Bug: 2, Steel: 0.5 },
+  Ghost: { Normal: 0, Psychic: 2, Ghost: 2, Dark: 0.5 },
+  Dragon: { Dragon: 2, Steel: 0.5, Fairy: 0 },
+  Dark: { Fighting: 0.5, Psychic: 2, Ghost: 2, Dark: 0.5, Fairy: 0.5 },
+  Steel: { Fire: 0.5, Water: 0.5, Electric: 0.5, Ice: 2, Rock: 2, Steel: 0.5, Fairy: 2 },
+  Fairy: { Fire: 0.5, Fighting: 2, Poison: 0.5, Dragon: 2, Dark: 2, Steel: 0.5 },
+};
 
 const elements = {
   overviewTeamCount: document.querySelector("#overview-team-count"),
@@ -132,6 +175,10 @@ const elements = {
   zPanel: document.querySelector("#z-panel"),
   teamSummary: document.querySelector("#team-summary"),
   teamGrid: document.querySelector("#team-grid"),
+  battleOpponentOne: document.querySelector("#battle-opponent-1"),
+  battleOpponentTwo: document.querySelector("#battle-opponent-2"),
+  battleSummary: document.querySelector("#battle-summary"),
+  battleSuggestions: document.querySelector("#battle-suggestions"),
   saveCaughtCount: document.querySelector("#save-caught-count"),
   saveTeamCount: document.querySelector("#save-team-count"),
   saveLocalRevision: document.querySelector("#save-local-revision"),
@@ -170,6 +217,7 @@ const state = {
   syncSnapshot: null,
   syncStatus: "unchecked",
   cloudHistory: [],
+  battleOpponents: ["", ""],
 };
 
 function readJson(key, fallback) {
@@ -309,6 +357,39 @@ function renderTeamSpeciesSuggestionList(input, index) {
   list.hidden = false;
 }
 
+function battleOpponentInputByIndex(index) {
+  return index === 0 ? elements.battleOpponentOne : elements.battleOpponentTwo;
+}
+
+function setBattleOpponent(index, constant) {
+  state.battleOpponents[index] = pokemonByConstant.has(constant) ? constant : "";
+  const input = battleOpponentInputByIndex(index);
+  if (input) input.value = state.battleOpponents[index] ? pokemonByConstant.get(state.battleOpponents[index]).name : "";
+}
+
+function renderBattleOpponentSuggestionList(input, index) {
+  const field = input.closest(".battle-opponent-field");
+  if (!field) return;
+  const list = field.querySelector("[data-battle-opponent-suggestions]");
+  if (!list) return;
+  const suggestions = teamSpeciesSuggestions(input.value);
+  if (!suggestions.length) {
+    list.replaceChildren();
+    list.hidden = true;
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  suggestions.forEach((entry) => {
+    const button = createElement("button", "team-species-suggestion");
+    button.type = "button";
+    button.dataset.battleOpponentPick = `${index}:${entry.constant}`;
+    button.textContent = entry.name;
+    fragment.append(button);
+  });
+  list.replaceChildren(fragment);
+  list.hidden = false;
+}
+
 function teamEvolutionTargets(entry) {
   return entry.evolutions
     .map((evolution) => ({
@@ -346,6 +427,7 @@ function saveTeam() {
   writeJson(storageKeys.team, state.team);
   markSaveModified();
   updateOverview();
+  renderBattlePlanner();
 }
 
 function saveBadges() {
@@ -1404,6 +1486,159 @@ function renderTeamCard(slot, index) {
   return card;
 }
 
+function typeEffectivenessMultiplier(attackType, defenderTypes) {
+  return defenderTypes.reduce((multiplier, defenderType) => {
+    const relation = typeChart[attackType]?.[defenderType];
+    return multiplier * (relation === undefined ? 1 : relation);
+  }, 1);
+}
+
+function formatMultiplier(multiplier) {
+  if (!Number.isFinite(multiplier)) return "1x";
+  if (Number.isInteger(multiplier)) return `${multiplier}x`;
+  return `${multiplier.toFixed(2).replace(/\.00$/, "")}x`;
+}
+
+function offensiveMovesForSlot(slot) {
+  return slot.moves
+    .map((moveName) => {
+      const metadata = moveMetadataByName.get(normalize(moveName));
+      if (!metadata?.type || metadata.category === "Status") return null;
+      return { name: moveName, type: metadata.type };
+    })
+    .filter(Boolean);
+}
+
+function bestCoverageMoveAgainst(slot, opponent) {
+  const offensiveMoves = offensiveMovesForSlot(slot);
+  let best = null;
+  offensiveMoves.forEach((move) => {
+    const multiplier = typeEffectivenessMultiplier(move.type, opponent.types);
+    if (!best || multiplier > best.multiplier) {
+      best = { ...move, multiplier };
+    }
+  });
+  return best;
+}
+
+function defensiveThreatAgainst(slotEntry, opponents) {
+  if (!slotEntry) return { multiplier: 1, type: "" };
+  let worst = { multiplier: 1, type: "" };
+  opponents.forEach((opponent) => {
+    opponent.types.forEach((attackType) => {
+      const multiplier = typeEffectivenessMultiplier(attackType, slotEntry.types);
+      if (multiplier > worst.multiplier) worst = { multiplier, type: attackType };
+    });
+  });
+  return worst;
+}
+
+function recommendBattleTeam(opponents) {
+  const required = Math.min(Math.max(opponents.length, 1), 2);
+  const candidates = state.team
+    .map((slot, index) => ({ slot, index, entry: pokemonByConstant.get(slot.species) }))
+    .filter((item) => item.entry);
+  if (!candidates.length) return [];
+
+  const scored = candidates.map((candidate) => {
+    const coverage = opponents.map((opponent) => ({
+      opponent,
+      bestMove: bestCoverageMoveAgainst(candidate.slot, opponent),
+    }));
+    const superEffectiveCount = coverage.filter((item) => item.bestMove && item.bestMove.multiplier > 1).length;
+    const coverageScore = coverage.reduce((sum, item) => sum + (item.bestMove?.multiplier || 0), 0);
+    const threat = defensiveThreatAgainst(candidate.entry, opponents);
+    const weaknessPenalty = Math.max(0, threat.multiplier - 1);
+    const score = superEffectiveCount * 120 + coverageScore * 12 - weaknessPenalty * 40;
+    return {
+      ...candidate,
+      score,
+      coverage,
+      threat,
+      superEffectiveCount,
+    };
+  });
+
+  const eligible = scored.filter((item) => item.superEffectiveCount > 0);
+  eligible.sort((a, b) => b.score - a.score || b.superEffectiveCount - a.superEffectiveCount || b.entry.bst - a.entry.bst);
+  return eligible.slice(0, required);
+}
+
+function renderBattlePlanner() {
+  if (!elements.battleSuggestions || !elements.battleOpponentOne || !elements.battleOpponentTwo || !elements.battleSummary) return;
+
+  const selected = state.battleOpponents
+    .filter(Boolean)
+    .filter((constant, index, list) => list.indexOf(constant) === index)
+    .map((constant) => pokemonByConstant.get(constant))
+    .filter(Boolean);
+
+  if (!selected.length) {
+    elements.battleSummary.textContent = "Pick up to 2 opponents to see team recommendations.";
+    elements.battleSuggestions.replaceChildren(emptyState("Choose at least one opposing Pokemon to generate battle picks."));
+    return;
+  }
+
+  const recommendations = recommendBattleTeam(selected);
+  const needed = Math.min(selected.length, 2);
+  elements.battleSummary.textContent = `Selected ${selected.length} opponent${selected.length > 1 ? "s" : ""}. Showing ${Math.min(recommendations.length, needed)} recommendation${needed > 1 ? "s" : ""}.`;
+
+  if (!recommendations.length) {
+    elements.battleSuggestions.replaceChildren(
+      emptyState("No team slot currently has a damaging super-effective move against the selected opponent(s)."),
+    );
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  recommendations.forEach((recommendation) => {
+    const card = createElement("article", "battle-suggestion-card");
+    const header = createElement("header", "battle-suggestion-card__header");
+    header.append(spriteWell(recommendation.entry, "battle-suggestion-card__sprite", 64));
+    const title = createElement("div");
+    title.append(
+      createElement("small", "", `Slot ${recommendation.index + 1}`),
+      createElement("h3", "", teamDisplayName(recommendation.slot, recommendation.entry)),
+    );
+    if (recommendation.slot.nickname.trim()) title.append(createElement("p", "team-species-name", recommendation.entry.name));
+    header.append(title);
+    card.append(header, renderTypeRow(recommendation.entry.types));
+
+    const coverageList = createElement("div", "battle-coverage-list");
+    recommendation.coverage.forEach(({ opponent, bestMove }) => {
+      const row = createElement("div", "battle-coverage-row");
+      row.append(createElement("strong", "", `vs ${opponent.name}`));
+      if (!bestMove) {
+        row.append(createElement("span", "", "No damaging move selected"));
+      } else {
+        row.append(
+          createElement(
+            "span",
+            "",
+            `${bestMove.name} (${bestMove.type}) · ${formatMultiplier(bestMove.multiplier)}${bestMove.multiplier > 1 ? " super effective" : ""}`,
+          ),
+        );
+      }
+      coverageList.append(row);
+    });
+    card.append(coverageList);
+
+    if (recommendation.threat.multiplier > 1) {
+      card.append(
+        createElement(
+          "p",
+          "battle-warning",
+          `Risk: weak to ${recommendation.threat.type}-type pressure (${formatMultiplier(recommendation.threat.multiplier)}) from selected opponent(s).`,
+        ),
+      );
+    } else {
+      card.append(createElement("p", "battle-safe", "No major type weakness detected against the selected opponent types."));
+    }
+    fragment.append(card);
+  });
+  elements.battleSuggestions.replaceChildren(fragment);
+}
+
 function updateOverview() {
   const currentCaughtCount = caughtCount();
   const selectedTeam = state.team.map((slot) => ({ slot, entry: pokemonByConstant.get(slot.species) || null }));
@@ -1415,7 +1650,7 @@ function updateOverview() {
   const teamFragment = document.createDocumentFragment();
   selectedTeam.forEach(({ slot, entry }, index) => {
     const item = createElement("div", `overview-team-slot${entry ? "" : " is-empty"}`);
-    item.append(entry ? spriteWell(entry, "overview-team-slot__sprite", 48) : spriteWell(null, "overview-team-slot__sprite", 48));
+    item.append(entry ? spriteWell(entry, "overview-team-slot__sprite", 64) : spriteWell(null, "overview-team-slot__sprite", 64));
     const copy = createElement("span", "overview-team-slot__copy");
     copy.append(createElement("strong", "", teamDisplayName(slot, entry)));
     copy.append(createElement("small", "", entry ? `Slot ${index + 1}` : "Empty slot"));
@@ -1956,6 +2191,7 @@ function renderAll() {
   renderItemTable();
   renderStones();
   renderTeam();
+  renderBattlePlanner();
 }
 
 function bindEvents() {
@@ -2184,8 +2420,23 @@ function bindEvents() {
       return;
     }
 
+    const battlePickButton = event.target.closest("[data-battle-opponent-pick]");
+    if (battlePickButton) {
+      const [slotIndex, constant] = battlePickButton.dataset.battleOpponentPick.split(":");
+      setBattleOpponent(Number(slotIndex), constant);
+      const list = battlePickButton.closest("[data-battle-opponent-suggestions]");
+      if (list) list.hidden = true;
+      renderBattlePlanner();
+      return;
+    }
+
     if (!event.target.closest(".team-species-field")) {
       document.querySelectorAll("[data-team-species-suggestions]").forEach((list) => {
+        list.hidden = true;
+      });
+    }
+    if (!event.target.closest(".battle-opponent-field")) {
+      document.querySelectorAll("[data-battle-opponent-suggestions]").forEach((list) => {
         list.hidden = true;
       });
     }
@@ -2257,6 +2508,19 @@ function bindEvents() {
       state.team[Number(nicknameInput.dataset.teamNickname)].nickname = nicknameInput.value;
       saveTeam();
       renderTeam();
+      return;
+    }
+
+    const battleSearch = event.target.closest("[data-battle-opponent-search]");
+    if (battleSearch) {
+      const index = Number(battleSearch.dataset.battleOpponentSearch);
+      const matched = pokemonFromTeamSearch(battleSearch.value);
+      if (battleSearch.value.trim() && !matched) {
+        setBattleOpponent(index, state.battleOpponents[index]);
+        return;
+      }
+      setBattleOpponent(index, matched?.constant || "");
+      renderBattlePlanner();
     }
   });
 
@@ -2283,14 +2547,36 @@ function bindEvents() {
     if (nicknameInput) {
       state.team[Number(nicknameInput.dataset.teamNickname)].nickname = nicknameInput.value;
       saveTeam();
+      return;
+    }
+
+    const battleSearch = event.target.closest("[data-battle-opponent-search]");
+    if (battleSearch) {
+      const index = Number(battleSearch.dataset.battleOpponentSearch);
+      const value = battleSearch.value.trim();
+      renderBattleOpponentSuggestionList(battleSearch, index);
+      const matched = pokemonFromTeamSearch(value);
+      if (!value && state.battleOpponents[index]) {
+        setBattleOpponent(index, "");
+        renderBattlePlanner();
+      } else if (matched && state.battleOpponents[index] !== matched.constant) {
+        setBattleOpponent(index, matched.constant);
+        renderBattlePlanner();
+      }
     }
   });
 
   document.addEventListener("focusin", (event) => {
     const speciesSearch = event.target.closest("[data-team-species-search]");
-    if (!speciesSearch) return;
-    const index = Number(speciesSearch.dataset.teamSpeciesSearch);
-    renderTeamSpeciesSuggestionList(speciesSearch, index);
+    if (speciesSearch) {
+      const index = Number(speciesSearch.dataset.teamSpeciesSearch);
+      renderTeamSpeciesSuggestionList(speciesSearch, index);
+      return;
+    }
+    const battleSearch = event.target.closest("[data-battle-opponent-search]");
+    if (!battleSearch) return;
+    const index = Number(battleSearch.dataset.battleOpponentSearch);
+    renderBattleOpponentSuggestionList(battleSearch, index);
   });
 
   window.addEventListener("scroll", () => {
