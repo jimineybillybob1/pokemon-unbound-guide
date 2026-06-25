@@ -22,7 +22,7 @@
   <body>
     <header class="app-header">
       <a class="brand" href="#dex" data-open-view="dex" aria-label="Pokemon Unbound Field Guide">
-        <img src="assets/unbound-mark.png" alt="" width="56" height="56" />
+        <img src="assets/unbound-steamgriddb-thumb.jpg" alt="" width="56" height="56" />
         <span>
           <strong>Pokemon Unbound</strong>
           <small>Field Guide</small>
@@ -54,6 +54,37 @@
         </div>
       </section>
       <section class="overview" aria-label="Guide overview">
+        <div class="overview-top-row">
+          <article class="overview-card overview-card--caught">
+            <div class="overview-card__header">
+              <div>
+                <span>Caught progress</span>
+                <strong><span id="count-caught">0</span> / <span id="count-caught-total">0</span></strong>
+              </div>
+              <button class="text-button" type="button" data-open-view="caught">Tracker</button>
+            </div>
+            <div class="progress-bar overview-progress overview-progress--caught"><span id="overview-caught-progress"></span></div>
+            <div class="overview-caught-meta">
+              <strong id="overview-caught-percent">0%</strong>
+              <small id="overview-caught-remaining">0 remaining</small>
+            </div>
+          </article>
+          <article class="overview-card">
+            <div class="overview-card__header">
+              <div>
+                <span>Badge tracker</span>
+                <strong><span id="badge-count">0</span> / <span id="badge-total">8</span></strong>
+              </div>
+              <div class="overview-badge-actions">
+                <button class="icon-button" id="badge-decrease" type="button" aria-label="Remove badge">-</button>
+                <button class="icon-button" id="badge-increase" type="button" aria-label="Add badge">+</button>
+              </div>
+            </div>
+            <div class="progress-bar overview-progress"><span id="overview-badge-progress"></span></div>
+            <p class="overview-note">Manual tracker for now. The repo does not yet include a full Unbound badge dataset.</p>
+            <div class="badge-slot-list" id="badge-slot-list" aria-label="Badge progress slots"></div>
+          </article>
+        </div>
         <article class="overview-card overview-card--team">
           <div class="overview-card__header">
             <div>
@@ -64,68 +95,43 @@
           </div>
           <div class="overview-team-list" id="overview-team-list"></div>
         </article>
-        <article class="overview-card">
-          <div class="overview-card__header">
-            <div>
-              <span>Caught progress</span>
-              <strong><span id="count-caught">0</span> / <span id="count-caught-total">0</span></strong>
-            </div>
-            <button class="text-button" type="button" data-open-view="caught">Tracker</button>
-          </div>
-          <div class="progress-bar overview-progress"><span id="overview-caught-progress"></span></div>
-        </article>
-        <article class="overview-card">
-          <div class="overview-card__header">
-            <div>
-              <span>Badge tracker</span>
-              <strong><span id="badge-count">0</span> / <span id="badge-total">8</span></strong>
-            </div>
-            <div class="overview-badge-actions">
-              <button class="icon-button" id="badge-decrease" type="button" aria-label="Remove badge">-</button>
-              <button class="icon-button" id="badge-increase" type="button" aria-label="Add badge">+</button>
-            </div>
-          </div>
-          <div class="progress-bar overview-progress"><span id="overview-badge-progress"></span></div>
-          <p class="overview-note">Manual tracker for now. The repo does not yet include a full Unbound badge dataset.</p>
-          <div class="badge-slot-list" id="badge-slot-list" aria-label="Badge progress slots"></div>
-        </article>
       </section>
 
       <nav class="view-tabs" aria-label="Guide sections">
         <button class="view-tab is-active" type="button" data-view="dex">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 9h16M8 13h4M8 16h8" /></svg>
+          <img class="view-tab__icon-sprite" src="assets/items/key-item/adventure-guide.png" alt="" width="30" height="30" />
           <span>Full Dex</span>
         </button>
         <button class="view-tab" type="button" data-view="locations">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21s6-6.2 6-12A6 6 0 0 0 6 9c0 5.8 6 12 6 12Z" /><circle cx="12" cy="9" r="2" /></svg>
+          <img class="view-tab__icon-sprite" src="assets/items/key-item/town-map.png" alt="" width="30" height="30" />
           <span>Locations</span>
         </button>
         <button class="view-tab" type="button" data-view="caught">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h6M15 12h6" /><circle cx="12" cy="12" r="3" /></svg>
+          <img class="view-tab__icon-sprite" src="assets/items/custom/poke-ball.png" alt="" width="30" height="30" />
           <span>Caught</span>
         </button>
         <button class="view-tab" type="button" data-view="moves">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 4 14 16M19 4 5 20" /></svg>
+          <img class="view-tab__icon-sprite" src="assets/items/tm/normal.png" alt="" width="30" height="30" />
           <span>Moves</span>
         </button>
         <button class="view-tab" type="button" data-view="tutors">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10" /></svg>
+          <img class="view-tab__icon-sprite" src="assets/items/key-item/tm-case.png" alt="" width="30" height="30" />
           <span>Tutors</span>
         </button>
         <button class="view-tab" type="button" data-view="items">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7h10l3 5v8H4v-8l3-5ZM9 7V4h6v3M4 12h16" /></svg>
+          <img class="view-tab__icon-sprite" src="assets/items/custom/zygarde-cube.png" alt="" width="30" height="30" />
           <span>Items</span>
         </button>
         <button class="view-tab" type="button" data-view="stones">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 2 8 6-3 11H7L4 8l8-6ZM4 8h16M12 2v6" /></svg>
+          <img class="view-tab__icon-sprite" src="assets/items/z-crystals/psychium-z--bag.png" alt="" width="30" height="30" />
           <span>Mega / Z</span>
         </button>
         <button class="view-tab" type="button" data-view="team">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3" /><circle cx="5" cy="10" r="2" /><circle cx="19" cy="10" r="2" /><path d="M7 20v-2a5 5 0 0 1 10 0v2M1.5 20v-1.5A3.5 3.5 0 0 1 5 15M22.5 20v-1.5A3.5 3.5 0 0 0 19 15" /></svg>
+          <img class="view-tab__icon-sprite" src="assets/items/custom/friend-ball.png" alt="" width="30" height="30" />
           <span>Team Builder</span>
         </button>
         <button class="view-tab" type="button" data-view="save">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v6h8V4M8 20v-6h8v6" /></svg>
+          <img class="view-tab__icon-sprite" src="assets/items/key-item/style-card.png" alt="" width="30" height="30" />
           <span>Save &amp; Sync</span>
         </button>
       </nav>
@@ -151,10 +157,6 @@
             <label>
               <span>Location</span>
               <select id="location-filter"></select>
-            </label>
-            <label class="checkbox-field">
-              <input id="hide-placeholders" type="checkbox" checked />
-              <span>Hide placeholders</span>
             </label>
           </div>
           <div class="type-quick-filters" id="type-quick-filters" aria-label="Quick Pokemon type filters"></div>
@@ -214,6 +216,7 @@
             </select>
           </label>
         </div>
+        <div class="type-quick-filters" id="caught-type-quick-filters" aria-label="Quick caught type filters"></div>
         <div class="caught-list" id="caught-list"></div>
       </section>
 
@@ -320,7 +323,6 @@
         </div>
         <div class="team-summary" id="team-summary"></div>
         <div class="team-grid" id="team-grid"></div>
-        <datalist id="team-pokemon-options"></datalist>
       </section>
 
       <section class="guide-view" id="view-save" data-view-panel="save">

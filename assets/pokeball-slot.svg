@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Pokeball">
+  <defs>
+    <linearGradient id="pokeball-red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff8c8c" />
+      <stop offset="100%" stop-color="#d24b4b" />
+    </linearGradient>
+    <linearGradient id="pokeball-white" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#dfe6f0" />
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="58" fill="url(#pokeball-white)" />
+  <path d="M64 6a58 58 0 0 1 58 58H6A58 58 0 0 1 64 6Z" fill="url(#pokeball-red)" />
+  <circle cx="64" cy="64" r="58" fill="none" stroke="#2b3345" stroke-width="8" />
+  <rect x="8" y="58" width="112" height="12" fill="#2b3345" />
+  <circle cx="64" cy="64" r="16" fill="#f8fbff" stroke="#2b3345" stroke-width="8" />
+  <circle cx="64" cy="64" r="7" fill="#d9e4f1" />
+</svg>

@@ -85,6 +85,8 @@ const elements = {
   countCaught: document.querySelector("#count-caught"),
   countCaughtTotal: document.querySelector("#count-caught-total"),
   overviewCaughtProgress: document.querySelector("#overview-caught-progress"),
+  overviewCaughtPercent: document.querySelector("#overview-caught-percent"),
+  overviewCaughtRemaining: document.querySelector("#overview-caught-remaining"),
   badgeCount: document.querySelector("#badge-count"),
   badgeTotal: document.querySelector("#badge-total"),
   overviewBadgeProgress: document.querySelector("#overview-badge-progress"),
@@ -94,7 +96,6 @@ const elements = {
   dexSearch: document.querySelector("#dex-search"),
   typeFilter: document.querySelector("#type-filter"),
   locationFilter: document.querySelector("#location-filter"),
-  hidePlaceholders: document.querySelector("#hide-placeholders"),
   dexGrid: document.querySelector("#dex-grid"),
   dexResultCount: document.querySelector("#dex-result-count"),
   dexLoadMore: document.querySelector("#dex-load-more"),
@@ -109,6 +110,7 @@ const elements = {
   caughtProgress: document.querySelector("#caught-progress"),
   caughtSearch: document.querySelector("#caught-search"),
   caughtFilter: document.querySelector("#caught-filter"),
+  caughtTypeQuickFilters: document.querySelector("#caught-type-quick-filters"),
   caughtList: document.querySelector("#caught-list"),
   moveSearch: document.querySelector("#move-search"),
   moveSourceFilter: document.querySelector("#move-source-filter"),
@@ -130,7 +132,6 @@ const elements = {
   zPanel: document.querySelector("#z-panel"),
   teamSummary: document.querySelector("#team-summary"),
   teamGrid: document.querySelector("#team-grid"),
-  teamPokemonOptions: document.querySelector("#team-pokemon-options"),
   saveCaughtCount: document.querySelector("#save-caught-count"),
   saveTeamCount: document.querySelector("#save-team-count"),
   saveLocalRevision: document.querySelector("#save-local-revision"),
@@ -162,6 +163,7 @@ const state = {
   team: normalizeTeam(readJson(storageKeys.team, [])),
   badges: Math.max(0, Math.min(TOTAL_BADGES, Number(readJson(storageKeys.badges, 0)) || 0)),
   caughtFilter: "all",
+  caughtTypeFilter: "all",
   syncCode: localStorage.getItem(storageKeys.syncCode) || "",
   saveMetadata: loadSaveMetadata(),
   syncContext: loadSyncContext(),
@@ -271,6 +273,70 @@ function pokemonFromTeamSearch(value) {
   return pokemonBySearchName.get(normalize(value));
 }
 
+function teamSpeciesSuggestions(query, limit = 8) {
+  const normalizedQuery = normalize(query);
+  if (!normalizedQuery) return [];
+  const startsWith = [];
+  const contains = [];
+  pokemon.forEach((entry) => {
+    const name = normalize(entry.name);
+    if (name.startsWith(normalizedQuery)) startsWith.push(entry);
+    else if (name.includes(normalizedQuery)) contains.push(entry);
+  });
+  return [...startsWith, ...contains].slice(0, limit);
+}
+
+function renderTeamSpeciesSuggestionList(input, index) {
+  const field = input.closest(".team-species-field");
+  if (!field) return;
+  const list = field.querySelector("[data-team-species-suggestions]");
+  if (!list) return;
+  const suggestions = teamSpeciesSuggestions(input.value);
+  if (!suggestions.length) {
+    list.replaceChildren();
+    list.hidden = true;
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  suggestions.forEach((entry) => {
+    const button = createElement("button", "team-species-suggestion");
+    button.type = "button";
+    button.dataset.teamSpeciesPick = `${index}:${entry.constant}`;
+    button.textContent = entry.name;
+    fragment.append(button);
+  });
+  list.replaceChildren(fragment);
+  list.hidden = false;
+}
+
+function teamEvolutionTargets(entry) {
+  return entry.evolutions
+    .map((evolution) => ({
+      evolution,
+      target: pokemonByConstant.get(evolution.target),
+    }))
+    .filter((item) => item.target);
+}
+
+function evolveTeamSlot(index, targetConstant) {
+  const current = state.team[index] || createTeamSlot("");
+  const target = pokemonByConstant.get(targetConstant);
+  if (!target) return;
+  const evolved = createTeamSlot(target.constant, current);
+  evolved.nickname = current.nickname;
+  evolved.nature = current.nature;
+  evolved.ability = validAbilityForSpecies(target.constant, current.ability);
+  const allowedMoves = new Set(moveChoicesForPokemon(target).map((move) => move.value));
+  evolved.moves = current.moves.map((move) => (allowedMoves.has(move) ? move : ""));
+  state.team[index] = evolved;
+  const newlyCaught = !state.caught.has(target.constant);
+  state.caught.add(target.constant);
+  saveTeam();
+  if (newlyCaught) saveCaught();
+  renderAll();
+  switchView("team");
+}
+
 function saveCaught() {
   writeJson(storageKeys.caught, [...state.caught]);
   markSaveModified();
@@ -279,6 +345,7 @@ function saveCaught() {
 function saveTeam() {
   writeJson(storageKeys.team, state.team);
   markSaveModified();
+  updateOverview();
 }
 
 function saveBadges() {
@@ -371,6 +438,15 @@ function quickTypeButton(type) {
   return button;
 }
 
+function caughtQuickTypeButton(type) {
+  const label = type === "all" ? "All" : type;
+  const button = pillButton(label, { caughtQuickType: type });
+  button.classList.add("type-quick-filter", "caught-type-quick-filter");
+  if (type !== "all") button.classList.add(`type-${normalize(type)}`);
+  if (state.caughtTypeFilter === type) button.classList.add("is-active");
+  return button;
+}
+
 function imageNode(src, alt, width = 64, height = 64) {
   const image = document.createElement("img");
   image.src = src || "assets/unbound-mark.png";
@@ -390,7 +466,7 @@ function teamDisplayName(slot, entry) {
 
 function spriteWell(entry, className = "sprite-well", size = 96) {
   const well = createElement("span", className);
-  well.append(imageNode(entry?.sprite, entry ? `${entry.name} sprite` : "", size, size));
+  well.append(imageNode(entry?.sprite || "assets/pokeball-slot.svg", entry ? `${entry.name} sprite` : "Empty slot", size, size));
   return well;
 }
 
@@ -599,7 +675,7 @@ function renderPokemonCard(entry) {
 function renderDex(resetLimit = false) {
   if (resetLimit) state.dexLimit = INITIAL_CARD_BATCH;
   const list = filteredPokemon({
-    includePlaceholders: !elements.hidePlaceholders.checked,
+    includePlaceholders: false,
     search: elements.dexSearch.value,
     type: elements.typeFilter.value,
     location: elements.locationFilter.value,
@@ -618,6 +694,13 @@ function renderDexQuickFilters() {
     a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b),
   );
   elements.typeQuickFilters.replaceChildren(...typeOptions.map((type) => quickTypeButton(type)));
+}
+
+function renderCaughtQuickFilters() {
+  const typeOptions = ["all", ...new Set(pokemon.flatMap((entry) => entry.types))].sort((a, b) =>
+    a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b),
+  );
+  elements.caughtTypeQuickFilters.replaceChildren(...typeOptions.map((type) => caughtQuickTypeButton(type)));
 }
 
 function focusDexPokemon(constant) {
@@ -695,7 +778,7 @@ function renderLocationCard(location) {
   for (const method of location.methods) {
     const block = createElement("section", "method-block");
     const encounters = locationMethodEntries(method);
-    block.append(createElement("h3", "", `${method.label} (${encounters.length})`));
+    block.append(createElement("h3", "", method.label));
     const list = createElement("div", "location-pokemon-list");
     encounters.forEach((encounter) => list.append(renderLocationPokemonRow(encounter)));
     block.append(list);
@@ -782,6 +865,7 @@ function caughtFilteredPokemon() {
     type: "all",
     location: "all",
   }).filter((entry) => {
+    if (state.caughtTypeFilter !== "all" && !entry.types.includes(state.caughtTypeFilter)) return false;
     if (state.caughtFilter === "caught") return isCaught(entry.constant);
     if (state.caughtFilter === "uncaught") return !isCaught(entry.constant);
     return true;
@@ -798,14 +882,15 @@ function renderCaught() {
   const fragment = document.createDocumentFragment();
   list.slice(0, state.caughtLimit).forEach((entry) => {
     const row = createElement("div", `caught-row${isCaught(entry.constant) ? " is-caught" : ""}`);
-    const identity = createElement("button", "caught-row__identity caught-row__toggle");
-    identity.type = "button";
-    identity.dataset.toggleCaught = entry.constant;
-    identity.append(spriteWell(entry, "caught-row__sprite", 38));
+    const topLine = createElement("div", "caught-row__topline");
+    topLine.append(createElement("small", "", `#${entry.guideNumber}`), caughtToggleButton(entry.constant, true));
+    row.append(topLine);
+    const identity = createElement("div", "caught-row__identity");
+    identity.append(spriteWell(entry, "caught-row__sprite", 66));
     const copy = createElement("span", "caught-row__copy");
-    copy.append(createElement("small", "", `#${entry.guideNumber}`), createElement("strong", "", entry.name), renderTypeRow(entry.types));
+    copy.append(createElement("strong", "", entry.name), renderTypeRow(entry.types));
     identity.append(copy);
-    row.append(identity, caughtToggleButton(entry.constant, true));
+    row.append(identity);
     fragment.append(row);
   });
   if (!fragment.childNodes.length) fragment.append(emptyState("No Pokemon matched the current tracker filters."));
@@ -1059,7 +1144,7 @@ function renderStones() {
 function canAutoLoad(view) {
   if (view === "dex") {
     const total = filteredPokemon({
-      includePlaceholders: !elements.hidePlaceholders.checked,
+      includePlaceholders: false,
       search: elements.dexSearch.value,
       type: elements.typeFilter.value,
       location: elements.locationFilter.value,
@@ -1219,18 +1304,38 @@ function renderTeamCard(slot, index) {
   }
 
   const speciesLabel = createElement("label");
+  speciesLabel.className = "team-species-field";
   speciesLabel.append(createElement("span", "", "Pokemon"));
   const speciesSearch = document.createElement("input");
   speciesSearch.type = "search";
-  speciesSearch.setAttribute("list", "team-pokemon-options");
   speciesSearch.placeholder = "Search Pokemon";
   speciesSearch.autocomplete = "off";
   speciesSearch.dataset.teamSpeciesSearch = String(index);
   speciesSearch.value = entry?.name || "";
   speciesLabel.append(speciesSearch);
+  const speciesSuggestions = createElement("div", "team-species-suggestions");
+  speciesSuggestions.dataset.teamSpeciesSuggestions = String(index);
+  speciesSuggestions.hidden = true;
+  speciesLabel.append(speciesSuggestions);
   card.append(speciesLabel);
 
   if (!entry) return card;
+
+  const evolutionTargets = teamEvolutionTargets(entry);
+  if (evolutionTargets.length) {
+    const evolutionActions = createElement("div", "team-evolution-actions");
+    evolutionActions.append(createElement("span", "card-label", "Evolution"));
+    const actionsRow = createElement("div", "team-evolution-actions__row");
+    evolutionTargets.forEach(({ target, evolution }) => {
+      const action = createElement("button", "mini-button team-evolution-button");
+      action.type = "button";
+      action.dataset.teamEvolve = `${index}:${target.constant}`;
+      action.textContent = evolution.method ? `Evolve to ${target.name} (${evolution.method})` : `Evolve to ${target.name}`;
+      actionsRow.append(action);
+    });
+    evolutionActions.append(actionsRow);
+    card.append(evolutionActions);
+  }
 
   const formGrid = createElement("div", "team-form-grid");
 
@@ -1322,6 +1427,8 @@ function updateOverview() {
   elements.countCaught.textContent = String(currentCaughtCount);
   elements.countCaughtTotal.textContent = String(pokemon.length);
   elements.overviewCaughtProgress.style.width = `${caughtPercent}%`;
+  elements.overviewCaughtPercent.textContent = `${caughtPercent}%`;
+  elements.overviewCaughtRemaining.textContent = `${Math.max(0, pokemon.length - currentCaughtCount)} remaining`;
 
   elements.badgeCount.textContent = String(state.badges);
   elements.badgeTotal.textContent = String(TOTAL_BADGES);
@@ -1815,11 +1922,6 @@ function switchView(view) {
 }
 
 function populateFilters() {
-  if (elements.teamPokemonOptions) {
-    const options = pokemon.map((entry) => new Option(entry.name, entry.name));
-    elements.teamPokemonOptions.replaceChildren(...options);
-  }
-
   const typeOptions = ["all", ...new Set(pokemon.flatMap((entry) => entry.types))].sort((a, b) =>
     a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b),
   );
@@ -1839,6 +1941,7 @@ function populateFilters() {
     ...methods.map((method) => new Option(method === "all" ? "All methods" : method, method)),
   );
   renderDexQuickFilters();
+  renderCaughtQuickFilters();
 }
 
 function renderAll() {
@@ -1869,7 +1972,6 @@ function bindEvents() {
   elements.dexSearch.addEventListener("input", () => renderDex(true));
   elements.typeFilter.addEventListener("change", () => renderDex(true));
   elements.locationFilter.addEventListener("change", () => renderDex(true));
-  elements.hidePlaceholders.addEventListener("change", () => renderDex(true));
   elements.dexLoadMore.addEventListener("click", () => {
     state.dexLimit += INITIAL_CARD_BATCH;
     renderDex();
@@ -1894,6 +1996,14 @@ function bindEvents() {
   elements.caughtFilter.addEventListener("change", () => {
     state.caughtFilter = elements.caughtFilter.value;
     state.caughtLimit = INITIAL_CARD_BATCH;
+    renderCaught();
+  });
+  elements.caughtTypeQuickFilters.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-caught-quick-type]");
+    if (!button) return;
+    state.caughtTypeFilter = button.dataset.caughtQuickType;
+    state.caughtLimit = INITIAL_CARD_BATCH;
+    renderCaughtQuickFilters();
     renderCaught();
   });
   elements.moveSearch.addEventListener("input", () => {
@@ -2065,6 +2175,28 @@ function bindEvents() {
   });
 
   document.addEventListener("click", (event) => {
+    const suggestionButton = event.target.closest("[data-team-species-pick]");
+    if (suggestionButton) {
+      const [slotIndex, constant] = suggestionButton.dataset.teamSpeciesPick.split(":");
+      state.team[Number(slotIndex)] = createTeamSlot(constant);
+      saveTeam();
+      renderTeam();
+      return;
+    }
+
+    if (!event.target.closest(".team-species-field")) {
+      document.querySelectorAll("[data-team-species-suggestions]").forEach((list) => {
+        list.hidden = true;
+      });
+    }
+
+    const evolveButton = event.target.closest("[data-team-evolve]");
+    if (evolveButton) {
+      const [slotIndex, constant] = evolveButton.dataset.teamEvolve.split(":");
+      evolveTeamSlot(Number(slotIndex), constant);
+      return;
+    }
+
     const evolutionButton = event.target.closest("[data-focus-pokemon]");
     if (evolutionButton) {
       focusDexPokemon(evolutionButton.dataset.focusPokemon);
@@ -2133,6 +2265,7 @@ function bindEvents() {
     if (speciesSearch) {
       const index = Number(speciesSearch.dataset.teamSpeciesSearch);
       const value = speciesSearch.value.trim();
+      renderTeamSpeciesSuggestionList(speciesSearch, index);
       const matched = pokemonFromTeamSearch(value);
       if (!value && state.team[index].species) {
         state.team[index] = createTeamSlot("");
@@ -2151,6 +2284,13 @@ function bindEvents() {
       state.team[Number(nicknameInput.dataset.teamNickname)].nickname = nicknameInput.value;
       saveTeam();
     }
+  });
+
+  document.addEventListener("focusin", (event) => {
+    const speciesSearch = event.target.closest("[data-team-species-search]");
+    if (!speciesSearch) return;
+    const index = Number(speciesSearch.dataset.teamSpeciesSearch);
+    renderTeamSpeciesSuggestionList(speciesSearch, index);
   });
 
   window.addEventListener("scroll", () => {
