@@ -783,6 +783,16 @@ label span,
   margin: 12px 0 0;
 }
 
+.location-quick-filters {
+  margin: 12px 0 0;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.location-quick-filter {
+  font-size: 0.74rem;
+}
+
 .save-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));

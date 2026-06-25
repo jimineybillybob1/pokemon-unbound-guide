@@ -144,8 +144,8 @@ const elements = {
   dexLoadMore: document.querySelector("#dex-load-more"),
   typeQuickFilters: document.querySelector("#type-quick-filters"),
   locationSearch: document.querySelector("#location-search"),
+  locationQuickFilters: document.querySelector("#location-quick-filters"),
   locationGrid: document.querySelector("#location-grid"),
-  locationLoadMore: document.querySelector("#location-load-more"),
   locationResultCount: document.querySelector("#location-result-count"),
   specialEncounters: document.querySelector("#special-encounters"),
   tradeSwarmSummary: document.querySelector("#trade-swarm-summary"),
@@ -204,9 +204,9 @@ const INITIAL_CARD_BATCH = 50;
 const state = {
   view: "dex",
   dexLimit: INITIAL_CARD_BATCH,
-  locationLimit: INITIAL_CARD_BATCH,
   caughtLimit: INITIAL_CARD_BATCH,
   moveLimit: INITIAL_CARD_BATCH,
+  selectedLocationKey: "",
   caught: new Set(readJson(storageKeys.caught, [])),
   team: normalizeTeam(readJson(storageKeys.team, [])),
   badges: Math.max(0, Math.min(TOTAL_BADGES, Number(readJson(storageKeys.badges, 0)) || 0)),
@@ -786,6 +786,13 @@ function renderCaughtQuickFilters() {
   elements.caughtTypeQuickFilters.replaceChildren(...typeOptions.map((type) => caughtQuickTypeButton(type)));
 }
 
+function locationQuickFilterButton(location, active) {
+  const button = createElement("button", `mini-button location-quick-filter${active ? " is-active" : ""}`, location.name);
+  button.type = "button";
+  button.dataset.locationQuickPick = normalize(location.name);
+  return button;
+}
+
 function focusDexPokemon(constant) {
   const target = pokemonByConstant.get(constant);
   if (!target) return;
@@ -996,17 +1003,85 @@ function renderLocationCard(location) {
 
 function renderLocations() {
   const list = filteredLocations();
-  const visible = list.slice(0, state.locationLimit);
-  elements.locationResultCount.textContent = `Showing ${visible.length} of ${list.length} locations`;
   if (!list.length) {
+    elements.locationResultCount.textContent = "Showing 0 locations";
+    elements.locationQuickFilters.replaceChildren();
     elements.locationGrid.replaceChildren(emptyState("No locations matched the current filters."));
-    elements.locationLoadMore.hidden = true;
     return;
   }
-  const fragment = document.createDocumentFragment();
-  visible.forEach((location) => fragment.append(renderLocationCard(location)));
-  elements.locationGrid.replaceChildren(fragment);
-  elements.locationLoadMore.hidden = visible.length >= list.length;
+
+  let selected = list.find((location) => normalize(location.name) === state.selectedLocationKey) || null;
+  if (!selected) {
+    selected = list[0];
+    state.selectedLocationKey = normalize(selected.name);
+  }
+  elements.locationResultCount.textContent = `Showing ${selected.name} (${list.length} match${list.length === 1 ? "" : "es"})`;
+  elements.locationQuickFilters.replaceChildren(
+    ...list.map((location) => locationQuickFilterButton(location, normalize(location.name) === state.selectedLocationKey)),
+  );
+
+  elements.locationGrid.replaceChildren(renderLocationCard(selected));
+}
+
+function canAutoLoad(view) {
+  if (view === "dex") {
+    const total = filteredPokemon({
+      includePlaceholders: false,
+      search: elements.dexSearch.value,
+      type: elements.typeFilter.value,
+      location: elements.locationFilter.value,
+    }).length;
+    return state.dexLimit < total;
+  }
+  if (view === "caught") {
+    return state.caughtLimit < caughtFilteredPokemon().length;
+  }
+  if (view === "moves") {
+    return state.moveLimit < filteredMoves().length;
+  }
+  return false;
+}
+
+function loadNextBatch(view) {
+  if (view === "dex" && canAutoLoad("dex")) {
+    state.dexLimit += INITIAL_CARD_BATCH;
+    renderDex();
+    return true;
+  }
+  if (view === "caught" && canAutoLoad("caught")) {
+    state.caughtLimit += INITIAL_CARD_BATCH;
+    renderCaught();
+    return true;
+  }
+  if (view === "moves" && canAutoLoad("moves")) {
+    state.moveLimit += INITIAL_CARD_BATCH;
+    renderMoves();
+    return true;
+  }
+  return false;
+}
+
+function scheduleAutoLoad(view) {
+  if (state.view !== view) return;
+  window.requestAnimationFrame(() => {
+    if (state.view !== view) return;
+    if (document.documentElement.scrollHeight <= window.innerHeight + 140) {
+      loadNextBatch(view);
+    }
+  });
+}
+
+function renderItemCard(item) {
+  const card = createElement("article", "item-card");
+  const header = createElement("header", "item-card__header");
+  header.append(itemIcon(item, "item-icon item-icon--large"));
+  const copy = createElement("span");
+  copy.append(createElement("small", "", item.number ? `#${item.number}` : "Item"), createElement("h3", "", item.name));
+  header.append(copy);
+  card.append(header);
+  if (item.type) card.append(renderTypeRow([item.type]));
+  card.append(createElement("p", "", item.location));
+  return card;
 }
 
 function renderSpecialSections() {
@@ -1365,75 +1440,6 @@ function renderStones() {
   elements.megaGrid.replaceChildren(megaFragment);
   elements.zGrid.replaceChildren(zFragment);
   elements.stoneResultCount.textContent = `Showing ${mega.length + z.length} items`;
-}
-
-function canAutoLoad(view) {
-  if (view === "dex") {
-    const total = filteredPokemon({
-      includePlaceholders: false,
-      search: elements.dexSearch.value,
-      type: elements.typeFilter.value,
-      location: elements.locationFilter.value,
-    }).length;
-    return state.dexLimit < total;
-  }
-  if (view === "caught") {
-    return state.caughtLimit < caughtFilteredPokemon().length;
-  }
-  if (view === "locations") {
-    return state.locationLimit < filteredLocations().length;
-  }
-  if (view === "moves") {
-    return state.moveLimit < filteredMoves().length;
-  }
-  return false;
-}
-
-function loadNextBatch(view) {
-  if (view === "dex" && canAutoLoad("dex")) {
-    state.dexLimit += INITIAL_CARD_BATCH;
-    renderDex();
-    return true;
-  }
-  if (view === "caught" && canAutoLoad("caught")) {
-    state.caughtLimit += INITIAL_CARD_BATCH;
-    renderCaught();
-    return true;
-  }
-  if (view === "locations" && canAutoLoad("locations")) {
-    state.locationLimit += INITIAL_CARD_BATCH;
-    renderLocations();
-    return true;
-  }
-  if (view === "moves" && canAutoLoad("moves")) {
-    state.moveLimit += INITIAL_CARD_BATCH;
-    renderMoves();
-    return true;
-  }
-  return false;
-}
-
-function scheduleAutoLoad(view) {
-  if (state.view !== view) return;
-  window.requestAnimationFrame(() => {
-    if (state.view !== view) return;
-    if (document.documentElement.scrollHeight <= window.innerHeight + 140) {
-      loadNextBatch(view);
-    }
-  });
-}
-
-function renderItemCard(item) {
-  const card = createElement("article", "item-card");
-  const header = createElement("header", "item-card__header");
-  header.append(itemIcon(item, "item-icon item-icon--large"));
-  const copy = createElement("span");
-  copy.append(createElement("small", "", item.number ? `#${item.number}` : "Item"), createElement("h3", "", item.name));
-  header.append(copy);
-  card.append(header);
-  if (item.type) card.append(renderTypeRow([item.type]));
-  card.append(createElement("p", "", item.location));
-  return card;
 }
 
 function metadataValueGrid(values) {
@@ -2367,11 +2373,12 @@ function bindEvents() {
   });
 
   elements.locationSearch.addEventListener("input", () => {
-    state.locationLimit = INITIAL_CARD_BATCH;
     renderLocations();
   });
-  elements.locationLoadMore.addEventListener("click", () => {
-    state.locationLimit += INITIAL_CARD_BATCH;
+  elements.locationQuickFilters.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-location-quick-pick]");
+    if (!button) return;
+    state.selectedLocationKey = button.dataset.locationQuickPick;
     renderLocations();
   });
   elements.caughtSearch.addEventListener("input", () => {
