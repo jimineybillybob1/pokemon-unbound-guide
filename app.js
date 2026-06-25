@@ -827,7 +827,7 @@ function filteredLocations() {
         ...(location.itemLocations || []),
         ...((location.exitsRows || []).flatMap((row) => [row.ref, ...(row.columns || [])])),
         ...((location.pointsOfInterestRows || []).flatMap((row) => [row.ref, ...(row.columns || [])])),
-        ...((location.itemLocationRows || []).flatMap((row) => [row.ref, ...(row.columns || [])])),
+        ...((location.itemLocationRows || []).flatMap((row) => [row.ref, ...(row.columns || []), row.imageLink || ""])),
       ]
         .join(" ")
         .toLowerCase();
@@ -901,13 +901,26 @@ function renderLocationCard(location) {
     if (rowData.length) {
       const table = createElement("table", "location-reference-table");
       const body = document.createElement("tbody");
+      const hasRef = rowData.some((row) => String(row.ref || "").trim().length);
       rowData.slice(0, 40).forEach((row) => {
         const tr = document.createElement("tr");
-        const refCell = document.createElement("th");
-        refCell.textContent = row.ref || "-";
+        if (hasRef) {
+          const refCell = document.createElement("th");
+          refCell.textContent = row.ref || "";
+          tr.append(refCell);
+        }
         const detailCell = document.createElement("td");
-        detailCell.textContent = row.columns.join(" • ");
-        tr.append(refCell, detailCell);
+        const text = row.columns.join(" • ");
+        detailCell.append(document.createTextNode(text));
+        if (title === "Item locations" && row.imageLink) {
+          detailCell.append(document.createTextNode(" "));
+          const imageLink = createElement("a", "location-image-link", "View image");
+          imageLink.href = row.imageLink;
+          imageLink.target = "_blank";
+          imageLink.rel = "noopener noreferrer";
+          detailCell.append(imageLink);
+        }
+        tr.append(detailCell);
         body.append(tr);
       });
       table.append(body);

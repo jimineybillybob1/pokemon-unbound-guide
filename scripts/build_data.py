@@ -1379,7 +1379,11 @@ def load_unboundwiki_locations() -> list[dict]:
                 columns = [clean(item) for item in columns_raw if clean(item)]
                 if not columns:
                     continue
-                rows.append({"ref": ref, "columns": columns})
+                normalized = {"ref": ref, "columns": columns}
+                image_link = clean(row.get("imageLink"))
+                if image_link:
+                    normalized["imageLink"] = image_link
+                rows.append(normalized)
             return rows
 
         points_rows = normalize_rows(entry.get("pointsOfInterestRows"))
@@ -1428,17 +1432,29 @@ def merge_unboundwiki_locations(location_records: list[dict], wiki_locations: li
         location["pointsOfInterest"] = [clean(item) for item in wiki.get("pointsOfInterest", []) if clean(item)]
         location["itemLocations"] = [clean(item) for item in wiki.get("itemLocations", []) if clean(item)]
         location["exitsRows"] = [
-            {"ref": clean(row.get("ref")), "columns": [clean(col) for col in row.get("columns", []) if clean(col)]}
+            {
+                "ref": clean(row.get("ref")),
+                "columns": [clean(col) for col in row.get("columns", []) if clean(col)],
+                **({"imageLink": clean(row.get("imageLink"))} if clean(row.get("imageLink")) else {}),
+            }
             for row in wiki.get("exitsRows", [])
             if isinstance(row, dict)
         ]
         location["pointsOfInterestRows"] = [
-            {"ref": clean(row.get("ref")), "columns": [clean(col) for col in row.get("columns", []) if clean(col)]}
+            {
+                "ref": clean(row.get("ref")),
+                "columns": [clean(col) for col in row.get("columns", []) if clean(col)],
+                **({"imageLink": clean(row.get("imageLink"))} if clean(row.get("imageLink")) else {}),
+            }
             for row in wiki.get("pointsOfInterestRows", [])
             if isinstance(row, dict)
         ]
         location["itemLocationRows"] = [
-            {"ref": clean(row.get("ref")), "columns": [clean(col) for col in row.get("columns", []) if clean(col)]}
+            {
+                "ref": clean(row.get("ref")),
+                "columns": [clean(col) for col in row.get("columns", []) if clean(col)],
+                **({"imageLink": clean(row.get("imageLink"))} if clean(row.get("imageLink")) else {}),
+            }
             for row in wiki.get("itemLocationRows", [])
             if isinstance(row, dict)
         ]

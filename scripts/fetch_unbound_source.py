@@ -167,43 +167,120 @@ def extract_html_sections(content_html: str, headings: tuple[str, ...]) -> list[
     return sections
 
 
-def parse_html_table_rows(section_html: str) -> list[dict[str, object]]:
+def clean_html_fragment(fragment: str) -> str:
+    text = re.sub(r"<br\s*/?>", " / ", fragment, flags=re.IGNORECASE)
+    return clean(unescape(strip_html_tags(text)))
+
+
+def extract_marker_from_image_url(image_url: str, section_key: str) -> str:
+    image_url = clean(image_url)
+    if not image_url:
+        return ""
+    number_icon = re.search(r"/icons/number/(\d+)\.(?:png|jpg|jpeg|webp)$", image_url, flags=re.IGNORECASE)
+    if number_icon:
+        return number_icon.group(1)
+    if section_key != "exits":
+        return ""
+    stem = Path(image_url.split("?")[0]).stem
+    stem = re.sub(r"^\d+-pokemon-unbound-", "", stem, flags=re.IGNORECASE)
+    stem = stem.replace("pokemon-unbound-", "")
+    stem = stem.replace("-", " ").strip()
+    if not stem:
+        return ""
+    if section_key == "exits" and "arrow" in image_url.lower():
+        return stem.upper()
+    if " " not in stem and len(stem) <= 4:
+        return stem.upper()
+    return stem.title()
+
+
+def parse_html_table_rows(section_html: str, section_key: str) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     table_pattern = re.compile(r"<table\b[^>]*>(.*?)</table>", re.IGNORECASE | re.DOTALL)
     row_pattern = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
     cell_pattern = re.compile(r"<t[hd]\b[^>]*>(.*?)</t[hd]>", re.IGNORECASE | re.DOTALL)
+    href_pattern = re.compile(r'href="([^"]+)"', re.IGNORECASE)
+    src_pattern = re.compile(r'src="([^"]+)"', re.IGNORECASE)
 
-    auto_ref = 1
     for table_html in table_pattern.findall(section_html):
         for row_html in row_pattern.findall(table_html):
-            cells = []
+            cells: list[dict[str, object]] = []
             for cell_html in cell_pattern.findall(row_html):
-                value = clean(unescape(strip_html_tags(cell_html)))
-                if value:
-                    cells.append(value)
+                value = clean_html_fragment(cell_html)
+                links = [clean(unescape(link)) for link in href_pattern.findall(cell_html) if clean(link)]
+                images = [clean(unescape(src)) for src in src_pattern.findall(cell_html) if clean(src)]
+                cells.append({"text": value, "links": links, "images": images})
             if not cells:
                 continue
-            lowered = [cell.lower() for cell in cells]
+            texts = [str(cell.get("text", "")) for cell in cells]
+            lowered = [text.lower() for text in texts if text]
             if lowered == ["item", "details", "image"] or lowered == ["item", "location", "image"]:
                 continue
-            if len(cells) == 1 and cells[0].lower() == "image":
+            if len(lowered) == 1 and lowered[0] == "image":
                 continue
-            first = cells[0]
-            marker_match = re.match(r"^#?\s*(\d+)\.?$", first)
-            marker = marker_match.group(1) if marker_match else str(auto_ref)
-            auto_ref += 1
-            rows.append({"ref": marker, "columns": cells})
+            columns = [text for text in texts if text]
+            if not columns:
+                continue
+            if len(columns) == 1:
+                heading_value = columns[0].lower()
+                if "points of interest" in heading_value or "exits from" in heading_value:
+                    continue
+
+            first_text = str(cells[0].get("text", ""))
+            marker_match = re.match(r"^#?\s*(\d+)\.?$", first_text)
+            marker = marker_match.group(1) if marker_match else ""
+            if not marker:
+                first_cell_images = cells[0].get("images", [])
+                if isinstance(first_cell_images, list):
+                    for image_url in first_cell_images:
+                        marker = extract_marker_from_image_url(str(image_url), section_key)
+                        if marker:
+                            break
+
+            image_link = ""
+            last_cell = cells[-1]
+            if isinstance(last_cell, dict):
+                links = last_cell.get("links", [])
+                images = last_cell.get("images", [])
+                if isinstance(links, list) and links:
+                    image_link = clean(links[0])
+                elif isinstance(images, list) and images:
+                    image_link = clean(images[0])
+
+            row: dict[str, object] = {"ref": marker, "columns": columns}
+            if image_link:
+                row["imageLink"] = image_link
+            rows.append(row)
     return rows
 
 
-def parse_section_reference_rows(content_html: str, headings: tuple[str, ...]) -> list[dict[str, object]]:
+def parse_section_reference_rows(content_html: str, headings: tuple[str, ...], section_key: str) -> list[dict[str, object]]:
     structured: list[dict[str, object]] = []
     for section_html in extract_html_sections(content_html, headings):
-        structured.extend(parse_html_table_rows(section_html))
+        structured.extend(parse_html_table_rows(section_html, section_key))
     if not structured:
         fallback_lines = extract_html_section_lines(content_html, headings)
         structured = [{"ref": "", "columns": [line]} for line in fallback_lines]
     return structured
+
+
+def parse_map_legend_rows(content_html: str) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    points_rows: list[dict[str, object]] = []
+    exits_rows: list[dict[str, object]] = []
+    table_pattern = re.compile(r"<table\b[^>]*>.*?</table>", re.IGNORECASE | re.DOTALL)
+    heading_pattern = re.compile(r"<thead\b[^>]*>(.*?)</thead>", re.IGNORECASE | re.DOTALL)
+
+    map_sections = extract_html_sections(content_html, ("map",))
+    for section_html in map_sections:
+        for table_html in table_pattern.findall(section_html):
+            heading_match = heading_pattern.search(table_html)
+            heading_text = clean_html_fragment(heading_match.group(1)) if heading_match else ""
+            heading_lower = heading_text.lower()
+            if "points of interest" in heading_lower:
+                points_rows.extend(parse_html_table_rows(table_html, "points"))
+            elif "exit" in heading_lower:
+                exits_rows.extend(parse_html_table_rows(table_html, "exits"))
+    return points_rows, exits_rows
 
 
 def extract_unboundwiki_map_url(content_html: str, slug: str) -> str:
@@ -271,11 +348,12 @@ def fetch_unboundwiki_locations() -> list[dict[str, object]]:
                     record["pageUrl"] = clean(post["link"])
                 if content_html:
                     record["mapUrl"] = extract_unboundwiki_map_url(content_html, slug)
-                    record["itemLocationRows"] = parse_section_reference_rows(content_html, ("item locations",))
-                    record["pointsOfInterestRows"] = parse_section_reference_rows(
-                        content_html, ("notable locations", "points of interest")
+                    record["itemLocationRows"] = parse_section_reference_rows(content_html, ("item locations",), "items")
+                    map_points_rows, map_exits_rows = parse_map_legend_rows(content_html)
+                    record["pointsOfInterestRows"] = map_points_rows or parse_section_reference_rows(
+                        content_html, ("notable locations", "points of interest"), "points"
                     )
-                    exits_rows = parse_section_reference_rows(content_html, ("exits",))
+                    exits_rows = map_exits_rows or parse_section_reference_rows(content_html, ("exits",), "exits")
                     if exits_rows:
                         record["exitsRows"] = exits_rows
 
