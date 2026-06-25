@@ -26,7 +26,7 @@ DPE_UNBOUND_REPO = "https://raw.githubusercontent.com/Skeli789/Dynamic-Pokemon-E
 
 # File paths within repos
 FILES = {
-    "species": f"{DPE_UNBOUND_REPO}/include/constants/species.h",
+    "species": f"{DPE_UNBOUND_REPO}/include/species.h",
     "base_stats": f"{DPE_UNBOUND_REPO}/src/Base_Stats.c",
     "learnsets": f"{DPE_UNBOUND_REPO}/src/Learnsets.c",
     "egg_moves": f"{DPE_UNBOUND_REPO}/src/Egg_Moves.c",
@@ -43,6 +43,8 @@ FILES = {
 
 DUPLICATE_ABILITIES_URL = "https://raw.githubusercontent.com/ydarissep/Unbound-Pokedex/main/src/abilities/duplicate_abilities.json"
 TYPE_CHART_URL = "https://raw.githubusercontent.com/ydarissep/Unbound-Pokedex/main/src/typeChart.json"
+ENCOUNTERS_URL = "https://raw.githubusercontent.com/ydarissep/Unbound-Pokedex/main/src/locations/encounters.json"
+TUTOR_FLAGS_URL = "https://raw.githubusercontent.com/ydarissep/Unbound-Pokedex/main/src/moves/tutor_flags.json"
 
 
 def fetch_url(url: str, timeout: int = 10) -> str:
@@ -52,7 +54,7 @@ def fetch_url(url: str, timeout: int = 10) -> str:
         response.raise_for_status()
         return response.text
     except requests.RequestException as e:
-        print(f"❌ Failed to fetch {url}: {e}")
+        print(f"[fail] Failed to fetch {url}: {e}")
         return ""
 
 
@@ -60,7 +62,7 @@ def save_file(path: Path, content: str) -> None:
     """Save content to a file, creating parent directories as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
-    print(f"✓ Saved {path.relative_to(ROOT_DIR)}")
+    print(f"[ok] Saved {path.relative_to(ROOT_DIR)}")
 
 
 def fetch_all_sources() -> dict[str, str]:
@@ -73,24 +75,25 @@ def fetch_all_sources() -> dict[str, str]:
         content = fetch_url(url)
         if content:
             sources[name] = content
-            print("✓")
+            print("[ok]")
         else:
-            print("✗")
+            print("[fail]")
 
-    # Fetch supplementary data
-    print(f"Fetching duplicate_abilities mapping...", end=" ", flush=True)
-    if content := fetch_url(DUPLICATE_ABILITIES_URL):
-        sources["duplicate_abilities"] = content
-        print("✓")
-    else:
-        print("✗")
-
-    print(f"Fetching type chart...", end=" ", flush=True)
-    if content := fetch_url(TYPE_CHART_URL):
-        sources["type_chart"] = content
-        print("✓")
-    else:
-        print("✗")
+    # Fetch supplementary data from Unbound-Pokedex.
+    supplementary_sources = {
+        "duplicate_abilities": (DUPLICATE_ABILITIES_URL, "duplicate_abilities mapping"),
+        "type_chart": (TYPE_CHART_URL, "type chart"),
+        "encounters": (ENCOUNTERS_URL, "wild encounter data"),
+        "tutor_flags": (TUTOR_FLAGS_URL, "tutor flag data"),
+    }
+    for name, (url, label) in supplementary_sources.items():
+        print(f"Fetching {label}...", end=" ", flush=True)
+        content = fetch_url(url)
+        if content:
+            sources[name] = content
+            print("[ok]")
+        else:
+            print("[fail]")
 
     return sources
 
@@ -141,14 +144,14 @@ def main() -> None:
     sources = fetch_all_sources()
 
     if not sources:
-        print("\n❌ No sources were fetched. Check your internet connection.")
+        print("\n[fail] No sources were fetched. Check your internet connection.")
         return
 
-    print(f"\n✓ Fetched {len(sources)} source files")
+    print(f"\n[ok] Fetched {len(sources)} source files")
 
     # Save individual source files
     for name, content in sources.items():
-        if name in ("duplicate_abilities", "type_chart"):
+        if name in ("duplicate_abilities", "type_chart", "encounters", "tutor_flags"):
             ext = "json"
         else:
             ext = "txt"
@@ -161,7 +164,7 @@ def main() -> None:
         json.dumps(index, indent=2, ensure_ascii=False) + "\n",
     )
 
-    print(f"\n✓ All sources saved to {DOCS_DIR.relative_to(ROOT_DIR)}/")
+    print(f"\n[ok] All sources saved to {DOCS_DIR.relative_to(ROOT_DIR)}/")
     print("  Use these files for offline builds or as reference.")
 
 

@@ -108,10 +108,6 @@ def main() -> int:
     unmatched = data.get("warnings", {}).get("unmatchedLocationSpecies", [])
     warn(len(unmatched) <= 100, f"{len(unmatched)} location species names did not match base stats records")
     warn(
-        data.get("trainers", {}).get("trainerTeamsAvailable"),
-        data.get("trainers", {}).get("gap", "Trainer team availability is unknown"),
-    )
-    warn(
         data.get("warnings", {}).get("moveMetadata") is None,
         data.get("warnings", {}).get("moveMetadata", ""),
     )

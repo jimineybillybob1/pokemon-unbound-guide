@@ -16,7 +16,7 @@ Then browse to `http://127.0.0.1:8765/`.
 
 ### Option 1: Fetch from Official Repositories (Recommended)
 
-This fetches the latest authoritative data directly from the Unbound ROM hack sources:
+This fetches the latest authoritative core source data directly from the Unbound ROM hack sources:
 
 ```powershell
 # Fetch source files from GitHub repositories
@@ -28,9 +28,11 @@ This fetches the latest authoritative data directly from the Unbound ROM hack so
 
 **Advantages:**
 - Always uses latest official Unbound ROM hack data
-- No local documentation files needed
 - Direct from `Skeli789/Dynamic-Pokemon-Expansion/Unbound` (authoritative source)
 - Includes supplementary data from `ydarissep/Unbound-Pokedex`
+- Pulls refined Unbound-Pokedex support datasets such as wild encounters and tutor flags
+
+**Current limitation:** the fetched source bundle covers the ROM/CFRU text sources and Unbound-Pokedex JSON helpers, but the build still relies on the local Unbound Excel workbooks for frontier services, trades, swarms, item tables, and other workbook-derived sections.
 
 ### Option 2: Build from Local Documentation Files
 
@@ -47,7 +49,6 @@ If you have the official Pokemon Unbound documentation files, keep them in `docu
 - `Egg_Moves.txt` — egg move lists
 - `Pokemon Unbound Location Guide v*.xlsx` — wild encounters, trades, gift/static encounters
 - `Pokemon Unbound Frontier Documentation.xlsx` — Battle Frontier tutors and services
-- `Pokemon Unbound Trainers Documentation.xlsx` — trainer data (optional)
 
 The raw `documentation/` folder is intentionally ignored by git.
 
@@ -84,10 +85,8 @@ The guide uses data from **two authoritative repositories:**
 - **`ydarissep/Unbound-Pokedex`**
   - `duplicate_abilities.json` — Ability variations across Pokémon forms
   - `typeChart.json` — Type effectiveness data
-
-- **Local Dreamstone Reference** (optional)
-  - Move metadata (for moves without Unbound-specific data)
-  - Ability descriptions (for abilities without Unbound-specific data)
+  - `encounters.json` — Structured wild encounter tables used as the preferred wild-location reference
+  - `tutor_flags.json` — Tutor-group metadata for move compatibility checks
 
 ## Architecture
 
@@ -119,6 +118,8 @@ documentation/
     ability_descriptions.txt
     duplicate_abilities.json
     type_chart.json
+    encounters.json
+    tutor_flags.json
     index.json
 ```
 
@@ -158,8 +159,8 @@ The `documentation/fetched-from-repo/` directory is ignored by git, so only the 
 
 ## Known Limitations
 
-- **Trainer teams** — Not built yet; local trainer documentation lacks reliable team data
-- **Move/ability metadata** — Move and ability descriptions are reference-supplemented from Dreamstone Pokerex data where Unbound-specific descriptions are unavailable
+- **Trainer teams** — Not included in the guide build
+- **Move/ability metadata** — Depends on fetched-from-repo CFRU files being present; run `scripts\fetch_unbound_source.py` before rebuilding if you want full move and ability detail coverage
 - **Maps** — Map data not yet included
 - **Cloud sync** — Not implemented
 
@@ -167,13 +168,11 @@ The `documentation/fetched-from-repo/` directory is ignored by git, so only the 
 
 ### Move & Ability Descriptions
 
-The build script uses this priority:
+The build script uses fetched **CFRU** move and ability definitions plus **Unbound-Pokedex** duplicate-ability mappings to populate move details and ability descriptions. If the fetched source files are missing, the guide falls back to basic stats and names only.
 
-1. **Unbound-specific** descriptions (if available in source)
-2. **Dreamstone Pokerex** reference (where names match)
-3. **Vanilla Fire Red** fallback (baseline)
+### Wild Encounter Locations
 
-If no description is available at any level, the move/ability is documented with basic stats only.
+When `documentation/fetched-from-repo/encounters.json` is available, the guide prefers the structured wild encounter data from **Unbound-Pokedex** for `guideData.locations`, while still using the local Unbound workbooks for gift/static encounters, trades, swarms, frontier data, and item tables.
 
 ### Pokemon Matching
 

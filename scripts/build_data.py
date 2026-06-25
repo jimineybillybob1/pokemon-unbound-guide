@@ -11,13 +11,20 @@ import openpyxl
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DOCS_DIR = ROOT_DIR / "documentation"
+FETCHED_REPO_DIR = DOCS_DIR / "fetched-from-repo"
 DATA_DIR = ROOT_DIR / "data"
 ASSETS_DIR = ROOT_DIR / "assets"
 POKEMON_ASSETS_DIR = ASSETS_DIR / "pokemon"
 ITEM_ASSETS_DIR = ASSETS_DIR / "items"
-REFERENCE_DATA_DIR = ROOT_DIR.parent / "Pokemon Dreamstone Mysteries" / "data"
-DREAMSTONE_MOVES_FILE = REFERENCE_DATA_DIR / "pokerex-moves.js"
-DREAMSTONE_ABILITIES_FILE = REFERENCE_DATA_DIR / "pokerex-abilities.js"
+UNBOUND_POKEDEX_ENCOUNTERS_FILE = FETCHED_REPO_DIR / "encounters.json"
+UNBOUND_POKEDEX_WILD_SOURCE = "Unbound-Pokedex encounters.json"
+FETCHED_MOVES_FILE = FETCHED_REPO_DIR / "moves.txt"
+FETCHED_MOVE_NAMES_FILE = FETCHED_REPO_DIR / "move_names.txt"
+FETCHED_MOVE_DESCRIPTIONS_FILE = FETCHED_REPO_DIR / "move_descriptions.txt"
+FETCHED_ABILITIES_FILE = FETCHED_REPO_DIR / "abilities.txt"
+FETCHED_ABILITY_NAMES_FILE = FETCHED_REPO_DIR / "ability_names.txt"
+FETCHED_ABILITY_DESCRIPTIONS_FILE = FETCHED_REPO_DIR / "ability_descriptions.txt"
+FETCHED_DUPLICATE_ABILITIES_FILE = FETCHED_REPO_DIR / "duplicate_abilities.json"
 
 BASE_STATS_FILE = DOCS_DIR / "Base_Stats.txt"
 EVOLUTION_FILE = DOCS_DIR / "Evolution Table.txt"
@@ -33,6 +40,27 @@ METHOD_MARKERS = {
     "Good Rod",
     "Super Rod",
     "Rock Smash",
+}
+UNBOUND_POKEDEX_METHOD_LABELS = {
+    "grassAnytime": "Grass",
+    "grassDay": "Grass (Day)",
+    "grassNight": "Grass (Night)",
+    "water": "Surfing",
+    "fishing": "Fishing",
+    "rockSmash": "Rock Smash",
+}
+MOVE_CATEGORY_LABELS = {
+    "SPLIT_PHYSICAL": "Physical",
+    "SPLIT_SPECIAL": "Special",
+    "SPLIT_STATUS": "Status",
+}
+ABILITY_DESCRIPTION_OVERRIDES = {
+    "ABILITY_NEUTRALIZINGGAS": "All Abilities are nullified.",
+    "ABILITY_FULLMETALBODY": "Prevents ability reduction.",
+    "ABILITY_EVAPORATE": "Nullifies all water to up Sp. Atk.",
+    "ABILITY_GRASS_DASH": "Grass-type moves hit first.",
+    "ABILITY_SLIPPERY_TAIL": "Tail moves hit first.",
+    "ABILITY_DRILL_BEAK": "Drill moves land critical hits.",
 }
 
 SPECIAL_SPECIES_NAMES = {
@@ -155,92 +183,203 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def read_optional_text(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return read_text(path)
+
+
+def read_json_file(path: Path) -> object | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(read_text(path))
+    except json.JSONDecodeError:
+        return None
+
+
 def normalize_key(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "", clean(value).lower())
 
 
-def read_js_assignment(path: Path) -> dict | None:
-    if not path.exists():
-        return None
-    try:
-        raw = path.read_text(encoding="utf-8", errors="replace").strip()
-    except OSError:
-        return None
-    _, separator, payload = raw.partition("=")
-    if not separator:
-        return None
-    payload = payload.rstrip().removesuffix(";").strip()
-    try:
-        return json.loads(payload)
-    except json.JSONDecodeError:
-        return None
+def parse_source_string(value: str) -> str:
+    text = clean(value)
+    if not text:
+        return ""
+    text = text.replace('\\"', '"')
+    text = text.replace("\\n", " ")
+    text = text.replace("\\p", " ")
+    text = text.replace("\\l", " ")
+    text = re.sub(r"\\([A-Za-z])", r"\1", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return "" if text == "-" else text
+
+
+def strip_source_conditionals(text: str) -> str:
+    output: list[str] = []
+    include_stack: list[bool] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#ifdef") or stripped.startswith("#ifndef"):
+            include_stack.append(True)
+            continue
+        if stripped.startswith("#else"):
+            if include_stack:
+                include_stack[-1] = not include_stack[-1]
+            continue
+        if stripped.startswith("#endif"):
+            if include_stack:
+                include_stack.pop()
+            continue
+        if stripped.startswith("#include"):
+            continue
+        if not include_stack or all(include_stack):
+            output.append(line)
+    return "\n".join(output)
+
+
+def parse_org_entries(text: str, prefix: str) -> dict[str, str]:
+    entries: dict[str, str] = {}
+    labels: list[str] = []
+    buffer: list[str] = []
+
+    def flush() -> None:
+        if not labels:
+            return
+        content = parse_source_string(" ".join(part.strip() for part in buffer if clean(part)))
+        if content:
+            for label in labels:
+                key = label.removeprefix(prefix) if label.startswith(prefix) else label
+                entries[normalize_key(key)] = content
+
+    for line in strip_source_conditionals(text).splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#org @"):
+            if labels and buffer:
+                flush()
+                labels = []
+                buffer = []
+            labels.append(stripped.removeprefix("#org @"))
+            continue
+        if labels:
+            buffer.append(line)
+
+    if labels:
+        flush()
+    return entries
 
 
 def load_reference_metadata() -> dict:
     metadata = {
         "moves": {},
+        "moveNames": {},
         "abilities": {},
         "sources": {},
         "warnings": [],
     }
 
-    move_payload = read_js_assignment(DREAMSTONE_MOVES_FILE)
-    if move_payload:
-        metadata["sources"]["moves"] = {
-            "name": "Dreamstone Pokerex move reference",
-            "source": move_payload.get("source", {}),
-            "file": DREAMSTONE_MOVES_FILE.name,
-        }
-        for move in move_payload.get("moves", []):
-            name = clean(move.get("name"))
-            if not name:
+    moves_text = read_optional_text(FETCHED_MOVES_FILE)
+    move_names_text = read_optional_text(FETCHED_MOVE_NAMES_FILE)
+    move_descriptions_text = read_optional_text(FETCHED_MOVE_DESCRIPTIONS_FILE)
+    if moves_text and move_names_text and move_descriptions_text:
+        move_names = parse_org_entries(move_names_text, "NAME_")
+        move_descriptions = parse_org_entries(move_descriptions_text, "DESC_")
+        field_re = re.compile(r"\.(\w+)\s*=\s*([^,\n]+),")
+        markers = list(re.finditer(r"\[MOVE_([A-Z0-9_]+)\]\s*=", moves_text))
+        for index, match in enumerate(markers):
+            move_id = match.group(1)
+            if move_id == "NONE":
                 continue
-            metadata["moves"][normalize_key(name)] = {
-                "type": clean(move.get("type")),
-                "category": clean(move.get("category")),
-                "power": move.get("power"),
-                "accuracy": move.get("accuracy"),
-                "pp": move.get("pp"),
-                "priority": move.get("priority"),
-                "contact": bool(move.get("contact")),
-                "description": clean(move.get("description")),
-                "effect": clean(move.get("effect")),
-                "metadataSource": "Dreamstone Pokerex move reference",
+            start = match.end()
+            end = markers[index + 1].start() if index + 1 < len(markers) else len(moves_text)
+            fields = {field: clean(value) for field, value in field_re.findall(moves_text[start:end])}
+            move_name = move_names.get(normalize_key(move_id)) or MOVE_NAME_OVERRIDES.get(move_id) or token_words(move_id)
+            metadata["moveNames"][normalize_key(move_id)] = move_name
+            metadata["moves"][normalize_key(move_name)] = {
+                "type": humanize_prefixed(fields.get("type", ""), "TYPE_"),
+                "category": MOVE_CATEGORY_LABELS.get(fields.get("split", ""), ""),
+                "power": parse_int(fields.get("power", "")),
+                "accuracy": parse_int(fields.get("accuracy", "")),
+                "pp": parse_int(fields.get("pp", "")),
+                "priority": parse_int(fields.get("priority", "")),
+                "contact": "FLAG_MAKES_CONTACT" in fields.get("flags", ""),
+                "description": move_descriptions.get(normalize_key(move_id), ""),
+                "effect": "",
+                "metadataSource": "Fetched CFRU move data",
             }
-    else:
-        metadata["warnings"].append(
-            f"No reference move metadata loaded from {DREAMSTONE_MOVES_FILE}."
-        )
-
-    ability_payload = read_js_assignment(DREAMSTONE_ABILITIES_FILE)
-    if ability_payload:
-        metadata["sources"]["abilities"] = {
-            "name": "Dreamstone Pokerex ability reference",
-            "source": ability_payload.get("source", {}),
-            "file": DREAMSTONE_ABILITIES_FILE.name,
+        metadata["sources"]["moves"] = {
+            "name": "Fetched CFRU move data",
+            "files": [
+                FETCHED_MOVES_FILE.name,
+                FETCHED_MOVE_NAMES_FILE.name,
+                FETCHED_MOVE_DESCRIPTIONS_FILE.name,
+            ],
         }
-        for ability in ability_payload.get("abilities", []):
-            name = clean(ability.get("name"))
-            description = clean(ability.get("description"))
-            if not name:
-                continue
-            record = metadata["abilities"].setdefault(
-                normalize_key(name),
-                {
-                    "name": name,
-                    "descriptions": [],
-                    "metadataSource": "Dreamstone Pokerex ability reference",
-                },
-            )
-            if description and description not in record["descriptions"]:
-                record["descriptions"].append(description)
     else:
         metadata["warnings"].append(
-            f"No reference ability metadata loaded from {DREAMSTONE_ABILITIES_FILE}."
+            "Move metadata requires fetched-from-repo move source files. Run scripts\\fetch_unbound_source.py to populate them."
         )
 
-    for ability in metadata["abilities"].values():
-        ability["description"] = " / ".join(ability.pop("descriptions"))
+    abilities_text = read_optional_text(FETCHED_ABILITIES_FILE)
+    ability_names_text = read_optional_text(FETCHED_ABILITY_NAMES_FILE)
+    ability_descriptions_text = read_optional_text(FETCHED_ABILITY_DESCRIPTIONS_FILE)
+    duplicate_abilities_payload = read_json_file(FETCHED_DUPLICATE_ABILITIES_FILE)
+    if abilities_text and ability_names_text and ability_descriptions_text:
+        ability_names = parse_org_entries(ability_names_text, "NAME_")
+        ability_descriptions = parse_org_entries(ability_descriptions_text, "DESC_")
+        ability_by_constant: dict[str, dict] = {}
+        for match in re.finditer(r"#define\s+(ABILITY_[A-Z0-9_]+)\s+(\d+)", abilities_text):
+            constant = match.group(1)
+            if constant == "ABILITY_NONE":
+                continue
+            ability_id = constant.removeprefix("ABILITY_")
+            name = ability_names.get(normalize_key(ability_id)) or token_words(ability_id)
+            description = ability_descriptions.get(normalize_key(ability_id), "")
+            record = {
+                "name": name,
+                "description": description,
+                "metadataSource": "Fetched CFRU ability data" if description else "",
+            }
+            ability_by_constant[constant] = record
+            if description:
+                metadata["abilities"][normalize_key(name)] = record
+
+        if isinstance(duplicate_abilities_payload, dict):
+            for base_constant, variants in duplicate_abilities_payload.items():
+                base_record = ability_by_constant.get(base_constant)
+                base_description = base_record.get("description", "") if base_record else ""
+                for variant_constant in variants or {}:
+                    variant_record = ability_by_constant.get(variant_constant)
+                    if not variant_record:
+                        variant_name = humanize_prefixed(variant_constant, "ABILITY_")
+                        variant_record = {"name": variant_name, "description": "", "metadataSource": ""}
+                        ability_by_constant[variant_constant] = variant_record
+                    if base_description and not variant_record.get("description"):
+                        variant_record["description"] = base_description
+                        variant_record["metadataSource"] = "Unbound-Pokedex duplicate ability mapping"
+                        metadata["abilities"][normalize_key(variant_record["name"])] = variant_record
+
+        for constant, description in ABILITY_DESCRIPTION_OVERRIDES.items():
+            record = ability_by_constant.get(constant)
+            if not record:
+                continue
+            record["description"] = description
+            record["metadataSource"] = "Unbound-Pokedex ability override"
+            metadata["abilities"][normalize_key(record["name"])] = record
+
+        metadata["sources"]["abilities"] = {
+            "name": "Fetched CFRU and Unbound-Pokedex ability data",
+            "files": [
+                FETCHED_ABILITIES_FILE.name,
+                FETCHED_ABILITY_NAMES_FILE.name,
+                FETCHED_ABILITY_DESCRIPTIONS_FILE.name,
+                FETCHED_DUPLICATE_ABILITIES_FILE.name,
+            ],
+        }
+    else:
+        metadata["warnings"].append(
+            "Ability metadata requires fetched-from-repo ability source files. Run scripts\\fetch_unbound_source.py to populate them."
+        )
 
     return metadata
 
@@ -377,6 +516,20 @@ def token_words(token: str) -> str:
     return " ".join(part.capitalize() for part in token.split("_") if part)
 
 
+def humanize_map_name(value: str) -> str:
+    words = []
+    for token in clean(value).split("_"):
+        if not token:
+            continue
+        if any(char.isdigit() for char in token):
+            words.append(token.upper())
+        elif len(token) == 1 and token.isalpha():
+            words.append(token.upper())
+        else:
+            words.append(token.capitalize())
+    return " ".join(words)
+
+
 def humanize_prefixed(value: str, prefix: str) -> str:
     if not value or value.endswith("_NONE"):
         return ""
@@ -425,10 +578,18 @@ def humanize_species(value: str) -> str:
     return f"{prefix}{base_name}{suffix}".strip()
 
 
-def move_name_from_constant(move_constant: str, hints: dict[str, str] | None = None) -> str:
+def move_name_from_constant(
+    move_constant: str,
+    hints: dict[str, str] | None = None,
+    name_lookup: dict[str, str] | None = None,
+) -> str:
     body = move_constant[len("MOVE_") :] if move_constant.startswith("MOVE_") else move_constant
     if body in MOVE_NAME_OVERRIDES:
         return MOVE_NAME_OVERRIDES[body]
+    if name_lookup:
+        named = name_lookup.get(normalize_key(body))
+        if named:
+            return named
     if hints:
         hinted = hints.get(normalize_key(body))
         if hinted:
@@ -1025,6 +1186,58 @@ def parse_location_workbook() -> tuple[dict, dict[str, str]]:
     )
 
 
+def parse_unbound_pokedex_wild_locations(pokemon: dict[str, dict]) -> list[dict]:
+    payload = read_json_file(UNBOUND_POKEDEX_ENCOUNTERS_FILE)
+    if not isinstance(payload, list):
+        return []
+
+    species_names = {constant: entry["name"] for constant, entry in pokemon.items()}
+    locations_by_name: dict[str, dict[str, list[str]]] = {}
+
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        map_name = humanize_map_name(clean(entry.get("mapName")))
+        encounters = entry.get("encounters")
+        if not map_name or not isinstance(encounters, dict):
+            continue
+        method_map = locations_by_name.setdefault(map_name, {})
+        for key, label in UNBOUND_POKEDEX_METHOD_LABELS.items():
+            details = encounters.get(key)
+            if not isinstance(details, dict):
+                continue
+            slots = details.get("slots")
+            if not isinstance(slots, list):
+                continue
+            species_list = method_map.setdefault(label, [])
+            for slot in slots:
+                if not isinstance(slot, dict):
+                    continue
+                species_constant = clean(slot.get("species"))
+                if not species_constant:
+                    continue
+                species_name = species_names.get(species_constant) or humanize_species(species_constant)
+                if species_name and species_name not in species_list:
+                    species_list.append(species_name)
+
+    records = []
+    for location_name in sorted(locations_by_name):
+        methods = []
+        for label in UNBOUND_POKEDEX_METHOD_LABELS.values():
+            species_list = locations_by_name[location_name].get(label, [])
+            if species_list:
+                methods.append(
+                    {
+                        "label": label,
+                        "species": species_list,
+                        "source": UNBOUND_POKEDEX_WILD_SOURCE,
+                    }
+                )
+        if methods:
+            records.append({"name": location_name, "methods": methods})
+    return records
+
+
 def parse_frontier_workbook() -> tuple[dict, dict[str, str]]:
     path = find_workbook("Frontier Documentation")
     workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -1045,27 +1258,6 @@ def parse_frontier_workbook() -> tuple[dict, dict[str, str]]:
         },
         move_hints,
     )
-
-
-def inspect_trainer_workbook() -> dict:
-    path = find_workbook("Trainers Documentation")
-    workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    sheets = []
-    for sheet in workbook.worksheets:
-        try:
-            dimension = sheet.calculate_dimension(force=True)
-        except Exception:
-            dimension = ""
-        sheets.append({"name": sheet.title, "dimension": dimension})
-    level_caps = parse_simple_table(rows_for(workbook, "LEVEL CAPS"))
-    workbook.close()
-    return {
-        "source": path.name,
-        "sheets": sheets,
-        "levelCaps": level_caps,
-        "trainerTeamsAvailable": False,
-        "gap": "Local trainer workbook only includes Intro and LEVEL CAPS sheets; no reliable trainer team tables were found.",
-    }
 
 
 def attach_source_data(
@@ -1089,11 +1281,12 @@ def collect_move_data(
     pokemon: dict[str, dict],
     move_hints: dict[str, str],
     move_metadata: dict[str, dict],
+    move_name_lookup: dict[str, str],
 ) -> list[dict]:
     moves: dict[str, dict] = {}
 
     def ensure_move(move_constant: str) -> dict:
-        name = move_name_from_constant(move_constant, move_hints)
+        name = move_name_from_constant(move_constant, move_hints, move_name_lookup)
         metadata = move_metadata.get(normalize_key(name), {})
         move = moves.setdefault(
             move_constant,
@@ -1222,15 +1415,18 @@ def build_data() -> dict:
     egg_moves = parse_egg_moves()
     evolutions = parse_evolutions()
     location_data, location_move_hints = parse_location_workbook()
+    unbound_pokedex_locations = parse_unbound_pokedex_wild_locations(pokemon)
+    if unbound_pokedex_locations:
+        location_data["locations"] = unbound_pokedex_locations
+        location_data["source"] = f'{location_data["source"]} + {UNBOUND_POKEDEX_ENCOUNTERS_FILE.name}'
     frontier_data, frontier_move_hints = parse_frontier_workbook()
-    trainer_data = inspect_trainer_workbook()
     reference_metadata = load_reference_metadata()
     move_hints = {**location_move_hints, **frontier_move_hints}
 
     attach_source_data(pokemon, learnsets, egg_moves, evolutions)
     unmatched_location_species = attach_locations(pokemon, location_data)
     asset_counts = attach_asset_paths(pokemon, location_data)
-    moves = collect_move_data(pokemon, move_hints, reference_metadata["moves"])
+    moves = collect_move_data(pokemon, move_hints, reference_metadata["moves"], reference_metadata["moveNames"])
     abilities = collect_ability_data(pokemon, reference_metadata["abilities"])
 
     pokemon_list = list(pokemon.values())
@@ -1271,7 +1467,6 @@ def build_data() -> dict:
             "eggMoves": EGG_MOVES_FILE.name,
             "locations": location_data["source"],
             "frontier": frontier_data["source"],
-            "trainers": trainer_data["source"],
             "referenceMetadata": reference_metadata["sources"],
         },
         "sourceCounts": source_counts,
@@ -1291,12 +1486,16 @@ def build_data() -> dict:
             "zCrystals": location_data["zCrystals"],
         },
         "frontier": frontier_data,
-        "trainers": trainer_data,
+        "trainers": {"included": False},
         "warnings": {
             "unmatchedLocationSpecies": unmatched_location_species,
-            "trainerTeams": trainer_data["gap"],
-            "moveMetadata": "Move details are supplemented from Dreamstone Pokerex reference metadata where names match; local Unbound move metadata was not found.",
-            "abilityMetadata": "Ability descriptions are supplemented from Dreamstone Pokerex reference metadata where names match; local Unbound ability metadata was not found.",
+            "trainerTeams": None,
+            "moveMetadata": None
+            if source_counts["movesWithMetadata"]
+            else "Move details are unavailable because fetched CFRU move source files were not found.",
+            "abilityMetadata": None
+            if source_counts["abilitiesWithMetadata"]
+            else "Ability descriptions are unavailable because fetched CFRU ability source files were not found.",
             "referenceMetadata": reference_metadata["warnings"],
         },
     }
@@ -1317,7 +1516,6 @@ def main() -> None:
                 "counts": data["sourceCounts"],
                 "warnings": {
                     "unmatchedLocationSpecies": len(data["warnings"]["unmatchedLocationSpecies"]),
-                    "trainerTeams": data["warnings"]["trainerTeams"],
                 },
             },
             ensure_ascii=False,
