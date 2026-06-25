@@ -1741,7 +1741,7 @@ function updateOverview() {
 
   elements.overviewTeamCount.textContent = `${activeTeam.length} / 6`;
   const teamFragment = document.createDocumentFragment();
-  selectedTeam.forEach(({ slot, entry }, index) => {
+  selectedTeam.forEach(({ slot, entry }) => {
     const item = createElement("div", `overview-team-slot${entry ? "" : " is-empty"}`);
     const sprite = entry
       ? spriteWell(entry, "overview-team-slot__sprite has-entry", 96)
@@ -1749,7 +1749,6 @@ function updateOverview() {
     item.append(sprite);
     const copy = createElement("span", "overview-team-slot__copy");
     copy.append(createElement("strong", "", teamDisplayName(slot, entry)));
-    copy.append(createElement("small", "", entry ? `Slot ${index + 1}` : "Empty slot"));
     item.append(copy);
     teamFragment.append(item);
   });

@@ -414,8 +414,14 @@ label span,
 
 .overview-team-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(178, 159, 255, 0.3);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 55%),
+    rgba(13, 10, 24, 0.48);
 }
 
 .overview-card--team {
@@ -438,10 +444,8 @@ label span,
 }
 
 .overview-card--team .overview-team-slot {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 52%),
-    rgba(10, 8, 18, 0.42);
-  border-color: rgba(178, 159, 255, 0.28);
+  border-color: transparent;
+  background: transparent;
 }
 
 .overview-card--caught .progress-bar {
@@ -483,15 +487,11 @@ label span,
 
 .overview-team-slot {
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  padding: 10px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 52%),
-    rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(117, 91, 213, 0.12);
-  border-radius: 14px;
+  justify-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 0;
 }
 
 .overview-team-slot.is-empty {
@@ -499,22 +499,26 @@ label span,
 }
 
 .overview-team-slot__sprite {
-  width: 84px;
-  height: 84px;
-  border-radius: 12px;
+  width: 126px;
+  height: 126px;
+  border-radius: 16px;
+  border-color: rgba(178, 159, 255, 0.34);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 60%),
+    rgba(35, 23, 68, 0.72);
 }
 
 .overview-team-slot__sprite img {
-  width: 76px;
-  height: 76px;
+  width: 108px;
+  height: 108px;
   object-fit: contain;
   image-rendering: pixelated;
 }
 
 .overview-team-slot__sprite.has-entry img {
-  width: 84px;
-  height: 84px;
-  transform: scale(1.14);
+  width: 112px;
+  height: 112px;
+  transform: scale(1.18);
   transform-origin: center;
 }
 
@@ -523,19 +527,20 @@ label span,
 }
 
 .overview-team-slot__copy {
-  display: grid;
-  gap: 2px;
+  display: block;
   min-width: 0;
+  text-align: center;
 }
 
 .overview-team-slot__copy strong {
   overflow: hidden;
   margin: 0;
   font-family: var(--font-ui);
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 120px;
 }
 
 .overview-team-slot__copy small {
@@ -2446,7 +2451,7 @@ th {
   }
 
   .overview-team-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .hero-banner {
@@ -2504,23 +2509,23 @@ th {
   }
 
   .overview-team-slot {
-    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 6px;
   }
 
   .overview-team-slot__sprite {
-    width: 72px;
-    height: 72px;
+    width: 102px;
+    height: 102px;
   }
 
   .overview-team-slot__sprite img {
-    width: 64px;
-    height: 64px;
+    width: 88px;
+    height: 88px;
   }
 
   .overview-team-slot__sprite.has-entry img {
-    width: 72px;
-    height: 72px;
-    transform: scale(1.1);
+    width: 92px;
+    height: 92px;
+    transform: scale(1.12);
   }
 
   .app-header {
