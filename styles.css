@@ -1128,6 +1128,8 @@ select {
 .team-card,
 .data-mini-card {
   padding: 16px;
+  content-visibility: auto;
+  contain-intrinsic-size: 520px;
 }
 
 .pokemon-card {

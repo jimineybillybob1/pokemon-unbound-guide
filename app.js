@@ -145,6 +145,7 @@ const elements = {
   typeQuickFilters: document.querySelector("#type-quick-filters"),
   locationSearch: document.querySelector("#location-search"),
   locationGrid: document.querySelector("#location-grid"),
+  locationLoadMore: document.querySelector("#location-load-more"),
   locationResultCount: document.querySelector("#location-result-count"),
   specialEncounters: document.querySelector("#special-encounters"),
   tradeSwarmSummary: document.querySelector("#trade-swarm-summary"),
@@ -203,6 +204,7 @@ const INITIAL_CARD_BATCH = 50;
 const state = {
   view: "dex",
   dexLimit: INITIAL_CARD_BATCH,
+  locationLimit: INITIAL_CARD_BATCH,
   caughtLimit: INITIAL_CARD_BATCH,
   moveLimit: INITIAL_CARD_BATCH,
   caught: new Set(readJson(storageKeys.caught, [])),
@@ -994,14 +996,17 @@ function renderLocationCard(location) {
 
 function renderLocations() {
   const list = filteredLocations();
-  elements.locationResultCount.textContent = `Showing ${list.length} locations`;
+  const visible = list.slice(0, state.locationLimit);
+  elements.locationResultCount.textContent = `Showing ${visible.length} of ${list.length} locations`;
   if (!list.length) {
     elements.locationGrid.replaceChildren(emptyState("No locations matched the current filters."));
+    elements.locationLoadMore.hidden = true;
     return;
   }
   const fragment = document.createDocumentFragment();
-  list.forEach((location) => fragment.append(renderLocationCard(location)));
+  visible.forEach((location) => fragment.append(renderLocationCard(location)));
   elements.locationGrid.replaceChildren(fragment);
+  elements.locationLoadMore.hidden = visible.length >= list.length;
 }
 
 function renderSpecialSections() {
@@ -1375,6 +1380,9 @@ function canAutoLoad(view) {
   if (view === "caught") {
     return state.caughtLimit < caughtFilteredPokemon().length;
   }
+  if (view === "locations") {
+    return state.locationLimit < filteredLocations().length;
+  }
   if (view === "moves") {
     return state.moveLimit < filteredMoves().length;
   }
@@ -1390,6 +1398,11 @@ function loadNextBatch(view) {
   if (view === "caught" && canAutoLoad("caught")) {
     state.caughtLimit += INITIAL_CARD_BATCH;
     renderCaught();
+    return true;
+  }
+  if (view === "locations" && canAutoLoad("locations")) {
+    state.locationLimit += INITIAL_CARD_BATCH;
+    renderLocations();
     return true;
   }
   if (view === "moves" && canAutoLoad("moves")) {
@@ -2354,6 +2367,11 @@ function bindEvents() {
   });
 
   elements.locationSearch.addEventListener("input", () => {
+    state.locationLimit = INITIAL_CARD_BATCH;
+    renderLocations();
+  });
+  elements.locationLoadMore.addEventListener("click", () => {
+    state.locationLimit += INITIAL_CARD_BATCH;
     renderLocations();
   });
   elements.caughtSearch.addEventListener("input", () => {
